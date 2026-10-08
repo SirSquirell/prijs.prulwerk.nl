@@ -39,8 +39,9 @@ sessions     (token_hash, user_id, device, created_at, expires_at)
 
 products     (id, ean, name, image_url, created_at)
 offers       (id, product_id, shop, url, active, last_checked_at, last_error)
-price_points (offer_id, checked_at, price_cents, in_stock, source, omnibus_low_cents)
+price_points (offer_id, checked_at, status, http_status, price_cents, in_stock, source, omnibus_low_cents, detail)
 price_daily  (offer_id, day, min_cents, max_cents, close_cents)   -- voor grafieken
+robots       (origin, fetched_at, http_status, body)               -- robots.txt-cache, 24 uur
 
 watches      (user_id, product_id, target_cents, alert_every_drop, created_at)
 push_subs    (id, user_id, endpoint, p256dh, auth, created_at)
@@ -62,8 +63,13 @@ settings     (user_id, quiet_from, quiet_to)
 - Eerst `schema.org` JSON-LD (`Product` / `Offer`) op de productpagina lezen: prijs, valuta, voorraad,
   GTIN. De meeste winkels hebben dat.
 - Per winkel een kleine parser alleen waar JSON-LD ontbreekt of fout is.
-- HTML verwerken met `HTMLRewriter` (streaming), niet de hele pagina in het geheugen parsen.
-- Beleefd: echte User-Agent met contactadres, niet vaker dan elke paar uur per URL, `robots.txt`
+- HTML verwerken met een tekstscan op `response.text()`, geen DOM. Eerst was het plan `HTMLRewriter`, maar
+  gemeten op een echte Coolblue-pagina (1,6 MB) kost die 12-16 ms CPU, boven de 10 ms van het gratis plan.
+  De tekstscan kost 6-9 ms.
+- Cron elke minuut, één aanbieding per aanroep, elke aanbieding om de 3 uur (`worker/src/config.js`).
+- Elke check krijgt een `status`: `ok`, `geblokkeerd` (403/429/503/captcha), `geen_prijs`, `robots`, `fout`.
+  Het oordeel rekent alleen met `ok`.
+- Beleefd: echte User-Agent met contactadres (besluit 0007), niet vaker dan elke paar uur per URL, `robots.txt`
   respecteren.
 - Lukt het niet: `last_error` vullen, prijs als onbekend tonen, nooit de vorige prijs herhalen.
 
