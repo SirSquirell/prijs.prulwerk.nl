@@ -1,0 +1,19 @@
+name = "prijswacht"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+account_id = "7b1b25c1f0b0a98c7f77a7a6a08d868b"
+workers_dev = true
+
+# Elke minuut één aanbieding. Het gratis plan geeft 10 ms CPU per aanroep,
+# dus liever vaak een beetje dan af en toe veel. Zie src/config.js.
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "prijswacht"
+database_id = "VUL_IN_BIJ_EERSTE_DEPLOY"
+migrations_dir = "migrations"
+
+[observability]
+enabled = true
