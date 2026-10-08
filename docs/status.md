@@ -4,7 +4,11 @@ Bijgewerkt: 2026-10-08
 
 ## Waar we staan
 
-Brief, besluiten en design staan in de repo. Er is nog geen code.
+Brief, besluiten en design staan in de repo. Er is nog geen app-code.
+
+GitHub Pages staat aan (`main`, `/`), met custom domain `prijs.prulwerk.nl` en een tijdelijke
+"in aanbouw"-pagina in de root. Wacht op het DNS-record `CNAME prijs → sirsquirell.github.io`
+(proxy uit) in Cloudflare. Daarna "Enforce HTTPS" aanzetten zodra GitHub het certificaat heeft.
 
 ## Volgende stap
 
