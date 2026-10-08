@@ -1,0 +1,55 @@
+/* prijswacht — prulwerk-familie, project-accent blauw.
+   Dit is de enige plek met hexwaarden. Plak dit blok in styles.css en gebruik verder alleen var(). */
+
+:root {
+  --page: #050505;
+  --card: #101010;
+  --card-2: #191919;
+  --line: #262626;
+  --text: #F2F2F0;
+  --text-2: #9A9A96;
+  --label: #8A8A85;
+  --accent: #5B9DFF;        /* knoppen, prijsdaling, grafieklijn, actieve tab */
+  --accent-line: #5B9DFF;   /* randen en focus */
+  --accent-text: #5B9DFF;   /* blauwe tekst */
+  --on-accent: #12120F;     /* tekst óp een blauw vlak */
+  --warn: #FF8A6B;          /* nep-korting, prijsstijging, stoppen */
+  --prulwerk-lime: #C9F531; /* alleen de ".nl" in de prulwerk-wordmark */
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --page: #F4F4F1;
+    --card: #FFFFFF;
+    --card-2: #EDEDE9;
+    --line: #E3E3DD;
+    --text: #12120F;
+    --text-2: #5A5A55;
+    --label: #86867F;
+    --accent: #5B9DFF;
+    --accent-line: #2F6FD6;   /* 3:1 op #EDEDE9, de krapste lichte laag */
+    --accent-text: #1F5FC4;   /* 4.5:1 op de lichte vlakken */
+    --on-accent: #12120F;
+    --warn: #C2410C;
+    --prulwerk-lime: #A6D400;
+    color-scheme: light;
+  }
+}
+
+:root[data-theme="light"] {
+  --page: #F4F4F1;
+  --card: #FFFFFF;
+  --card-2: #EDEDE9;
+  --line: #E3E3DD;
+  --text: #12120F;
+  --text-2: #5A5A55;
+  --label: #86867F;
+  --accent: #5B9DFF;
+  --accent-line: #2F6FD6;
+  --accent-text: #1F5FC4;
+  --on-accent: #12120F;
+  --warn: #C2410C;
+  --prulwerk-lime: #A6D400;
+  color-scheme: light;
+}

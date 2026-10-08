@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<title>Prijswacht · inloggen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@900&amp;family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+:root{--page:#050505;--card:#101010;--card2:#191919;--line:#262626;--text:#F2F2F0;--text2:#9A9A96;--label:#8A8A85;--accent:#5B9DFF;--on-accent:#12120F;--warn:#FF8A6B}
+body{margin:0;background:var(--page)}
+a{color:var(--accent)}a:hover{color:var(--text)}
+input:focus-visible,button:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; padding: 28px 24px 32px; display: flex; flex-direction: column; gap: 28px; background: var(--page); color: var(--text); font-family: 'Instrument Sans', sans-serif; font-size: 15px; line-height: 1.5">
+  <div style="display: flex; align-items: center; gap: 10px">
+    <svg width="36" height="36" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#101010" stroke="#262626" stroke-width="8"></rect><polyline points="112,160 208,232 272,200" fill="none" stroke="#F2F2F0" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"></polyline><polyline points="272,200 400,352" fill="none" stroke="#5B9DFF" stroke-width="44" stroke-linecap="round"></polyline></svg>
+    <span style="font-family: Archivo, sans-serif; font-weight: 900; font-size: 20px; letter-spacing: -0.035em">prijswacht</span>
+    <a href="https://prulwerk.nl/" style="margin-left: auto; font-family: Archivo, sans-serif; font-weight: 900; font-size: 13px; letter-spacing: -0.02em; color: var(--text); text-decoration: none">prulwerk<span style="color: #C9F531">.nl</span></a>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; margin-top: 40px">
+    <h1 style="margin: 0; font-family: Archivo, sans-serif; font-weight: 900; font-size: 44px; line-height: 0.94; letter-spacing: -0.035em">zeg wat je wilt hebben. wij letten op de prijs.</h1>
+    <p style="margin: 0; color: var(--text2)">we volgen het bij nederlandse winkels en melden het als het zakt. rond black friday zeggen we ook of de korting echt is.</p>
+  </div>
+
+  <sc-if value="{{notSent}}" hint-placeholder-val="{{ true }}">
+    <form style="display: flex; flex-direction: column; gap: 12px" onSubmit="{{send}}">
+      <label for="email" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--label); text-transform: lowercase">e-mailadres</label>
+      <input id="email" type="email" autocomplete="email" placeholder="jij@voorbeeld.nl" style="height: 52px; box-sizing: border-box; padding: 0 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); font: inherit; font-size: 16px">
+      <button type="submit" style="height: 52px; border: 0; border-radius: 14px; background: var(--accent); color: var(--on-accent); font-family: 'Instrument Sans', sans-serif; font-weight: 600; font-size: 16px; cursor: pointer">stuur inloglink</button>
+      <div style="display: flex; align-items: center; gap: 12px; color: var(--label); font-size: 13px"><div style="flex: 1; height: 1px; background: var(--line)"></div>of<div style="flex: 1; height: 1px; background: var(--line)"></div></div>
+      <button type="button" style="height: 52px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="9" r="4"></circle><path d="M2 21c0-3.3 2.7-6 6-6s6 2.7 6 6"></path><path d="M15 11h7M19 11v4M22 11v2"></path></svg>
+        inloggen met passkey
+      </button>
+    </form>
+  </sc-if>
+
+  <sc-if value="{{sent}}" hint-placeholder-val="{{ false }}">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 20px; border-radius: 18px; background: var(--card); border: 1px solid var(--line)">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--label)">verstuurd</span>
+      <h2 style="margin: 0; font-family: Archivo, sans-serif; font-weight: 900; font-size: 26px; line-height: 0.96; letter-spacing: -0.035em">check je mail.</h2>
+      <p style="margin: 0; color: var(--text2)">de link werkt 15 minuten en maar één keer. open hem op dit apparaat.</p>
+      <a href="Overzicht.dc.html" style="display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 14px; background: var(--card2); color: var(--text); text-decoration: none; font-weight: 600">prototype: link openen</a>
+      <button type="button" onClick="{{reset}}" style="background: none; border: 0; padding: 8px 0; color: var(--text2); font: inherit; text-decoration: underline; cursor: pointer; align-self: flex-start">ander adres gebruiken</button>
+    </div>
+  </sc-if>
+
+  <p style="margin: auto 0 0; font-size: 13px; color: var(--label)">geen wachtwoord. dit apparaat onthoudt je 30 dagen. alleen op uitnodiging.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(p) { super(p); this.state = { sent: false }; }
+  renderVals() {
+    return {
+      sent: this.state.sent,
+      notSent: !this.state.sent,
+      send: (e) => { e.preventDefault(); this.setState({ sent: true }); },
+      reset: () => this.setState({ sent: false })
+    };
+  }
+}
+</script>
+</body>
+</html>
