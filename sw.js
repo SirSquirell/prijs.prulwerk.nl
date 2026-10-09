@@ -1,6 +1,6 @@
 // Minimale service worker: de app werkt als app op je beginscherm en laadt ook bij slecht bereik.
 // Alleen eigen bestanden; de API (andere site) gaat altijd rechtstreeks.
-const CACHE = "prijswacht-v2";
+const CACHE = "prijswacht-v3";
 const SHELL = ["/", "/index.html", "/styles.css", "/app.js", "/api.js", "/dom.js", "/format.js", "/chart.js", "/vendor/simplewebauthn-browser-14.0.0.js", "/favicon.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {

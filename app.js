@@ -139,6 +139,11 @@ function errorLine() {
   return h("p", { class: "error", role: "alert" });
 }
 
+// NotAllowedError betekent: afgebroken, verlopen, of de browser weigert (bijv. bij een certificaatwaarschuwing).
+function notAllowedText(what) {
+  return `${what} is afgebroken of geweigerd. tik nog een keer op de knop. blijft dit gebeuren, open de link dan in safari of chrome zonder waarschuwing in de adresbalk.`;
+}
+
 function errorScreen(err) {
   return h(
     "section",
@@ -151,6 +156,15 @@ function errorScreen(err) {
 }
 
 function inAppWarning() {
+  if (!window.isSecureContext) {
+    return h(
+      "div",
+      { class: "card" },
+      h("span", { class: "label" }, "beveiligde verbinding nodig"),
+      h("h2", { class: "title" }, "open deze pagina via https."),
+      h("p", { class: "muted" }, "passkeys werken alleen via een beveiligde verbinding. werkt https nog niet, probeer het over een uur nog eens."),
+    );
+  }
   const copy = h("button", { class: "btn", type: "button" }, "link kopiëren");
   copy.addEventListener("click", async () => {
     // De link opnieuw opbouwen; het token staat niet meer in de adresbalk.
@@ -175,14 +189,35 @@ function inAppWarning() {
 
 // ---------- inloggen ----------
 
+// Safari staat een passkey-vraag alleen toe direct na een tik. Daarom halen we de opties van tevoren op,
+// zodat de tik meteen startAuthentication/startRegistration aanroept zonder netwerk ertussen.
+function prefetch(load) {
+  let current = null;
+  const refresh = () => {
+    current = { at: Date.now(), promise: load().catch(() => null) };
+    return current;
+  };
+  refresh();
+  return {
+    async take() {
+      const fresh = current && Date.now() - current.at < 4 * 60_000 ? current : refresh();
+      const value = await fresh.promise;
+      refresh(); // een challenge werkt één keer; meteen de volgende klaarzetten
+      return value ?? (await load());
+    },
+    refresh,
+  };
+}
+
 function loginScreen() {
   const err = errorLine();
   const btn = h("button", { class: "btn", type: "button" }, icon(ICONS.key, 20), "inloggen met passkey");
+  const prepared = prefetch(() => api("/api/inloggen/opties", { body: {} }));
   btn.addEventListener("click", async () => {
     err.textContent = "";
     const done = busy(btn, "even wachten…");
     try {
-      const { options, challengeToken } = await api("/api/inloggen/opties", { body: {} });
+      const { options, challengeToken } = await prepared.take();
       const response = await startAuthentication({ optionsJSON: options });
       const res = await api("/api/inloggen", { body: { challengeToken, response } });
       setToken(res.token);
@@ -192,7 +227,7 @@ function loginScreen() {
     } catch (e) {
       done();
       err.textContent =
-        e?.name === "NotAllowedError" ? "inloggen afgebroken." : e instanceof ApiError ? e.message : "inloggen is niet gelukt. probeer het nog een keer, of vraag mathijs om een nieuwe link.";
+        e?.name === "NotAllowedError" ? notAllowedText("inloggen") : e instanceof ApiError ? e.message : "inloggen is niet gelukt. probeer het nog een keer, of vraag mathijs om een nieuwe link.";
     }
   });
 
@@ -232,6 +267,20 @@ async function inviteScreen(invite) {
   const err = errorLine();
   const nameInput = h("input", { id: "naam", type: "text", autocomplete: "given-name", maxlength: 40, value: info.name ?? "", required: true });
   const btn = h("button", { class: "btn", type: "button" }, icon(ICONS.key, 20), "maak passkey");
+  // De opties hangen af van de naam (die komt in je wachtwoordbeheer), dus opnieuw ophalen als die verandert.
+  let preparedFor = nameInput.value.trim();
+  let prepared = prefetch(() => api("/api/registreren/opties", { body: { invite, name: preparedFor } }));
+  let typing;
+  nameInput.addEventListener("input", () => {
+    clearTimeout(typing);
+    typing = setTimeout(() => {
+      const name = nameInput.value.trim();
+      if (name && name !== preparedFor) {
+        preparedFor = name;
+        prepared = prefetch(() => api("/api/registreren/opties", { body: { invite, name } }));
+      }
+    }, 400);
+  });
   btn.addEventListener("click", async () => {
     err.textContent = "";
     const name = nameInput.value.trim();
@@ -242,7 +291,11 @@ async function inviteScreen(invite) {
     }
     const done = busy(btn, "even wachten…");
     try {
-      const { options, challengeToken } = await api("/api/registreren/opties", { body: { invite, name } });
+      if (name !== preparedFor && !info.existing) {
+        preparedFor = name;
+        prepared = prefetch(() => api("/api/registreren/opties", { body: { invite, name } }));
+      }
+      const { options, challengeToken } = await prepared.take();
       const response = await startRegistration({ optionsJSON: options });
       const res = await api("/api/registreren", { body: { invite, challengeToken, response } });
       clearInvite();
@@ -253,7 +306,7 @@ async function inviteScreen(invite) {
       done();
       err.textContent =
         e?.name === "NotAllowedError"
-          ? "afgebroken. tik nog een keer op de knop."
+          ? notAllowedText("een passkey maken")
           : e?.name === "InvalidStateError"
             ? "dit apparaat heeft al een passkey voor dit account. log gewoon in."
             : e instanceof ApiError
