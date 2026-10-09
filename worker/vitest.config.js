@@ -7,7 +7,7 @@ export default defineConfig(async () => {
     plugins: [
       cloudflareTest({
         wrangler: { configPath: "./wrangler.toml" },
-        miniflare: { bindings: { TEST_MIGRATIONS: migrations } },
+        miniflare: { bindings: { TEST_MIGRATIONS: migrations, AUTH_SECRET: "test-geheim-van-minstens-32-tekens-lang", RP_ID: "prijs.prulwerk.nl", ORIGIN: "https://prijs.prulwerk.nl" } },
       }),
     ],
     test: { setupFiles: ["./test/apply-migrations.js"] },

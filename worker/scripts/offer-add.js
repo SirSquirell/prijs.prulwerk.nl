@@ -22,6 +22,8 @@ const sql = [
     url.hash = "";
     return `INSERT OR IGNORE INTO offers (product_id, shop, url, created_at) VALUES ((SELECT max(id) FROM products), ${q(shopFromUrl(url.href))}, ${q(url.href)}, ${q(now)});`;
   }),
+  // Beheerders volgen alles wat erbij komt.
+  `INSERT OR IGNORE INTO watches (user_id, product_id, created_at) SELECT id, (SELECT max(id) FROM products), ${q(now)} FROM users WHERE is_admin = 1;`,
 ].join("\n");
 
 execFileSync("npx", ["wrangler", "d1", "execute", "prijswacht", local ? "--local" : "--remote", "--command", sql], { stdio: "inherit" });

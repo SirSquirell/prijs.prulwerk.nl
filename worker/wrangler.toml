@@ -17,3 +17,9 @@ migrations_dir = "migrations"
 
 [observability]
 enabled = true
+
+# Passkeys horen bij dit domein. Verhuist de site, dan moet iedereen een nieuwe uitnodiging.
+[vars]
+RP_ID = "prijs.prulwerk.nl"
+RP_NAME = "prijswacht"
+ORIGIN = "https://prijs.prulwerk.nl"
