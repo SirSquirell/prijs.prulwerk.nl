@@ -12,7 +12,7 @@ crons = ["* * * * *"]
 [[d1_databases]]
 binding = "DB"
 database_name = "prijswacht"
-database_id = "VUL_IN_BIJ_EERSTE_DEPLOY"
+database_id = "43731ffa-4423-4879-a540-b19c4b38a6ab"
 migrations_dir = "migrations"
 
 [observability]

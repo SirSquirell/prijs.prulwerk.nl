@@ -4,8 +4,9 @@ Bijgewerkt: 2026-10-08
 
 ## Waar we staan
 
-Fase 1 is gebouwd en getest, maar nog **niet live**: de deploy wacht op het Cloudflare-token
-(`docs/mathijs-todo.md`, punt 1). Tot dat er is komt er geen data binnen.
+Fase 1 is **live** sinds 9 oktober 2026, 09:17. De Worker draait op
+https://prijswacht.prijswacht-worker.workers.dev/ en verzamelt prijzen. Eerste checks vanaf Cloudflare:
+Coolblue €359,00, Amazon €300,71, bol 403.
 
 ## Werkt
 
@@ -25,10 +26,8 @@ Fase 1 is gebouwd en getest, maar nog **niet live**: de deploy wacht op het Clou
 
 ## Werkt niet / open
 
-- Niet gedeployed (token ontbreekt).
-- bol blokkeert vanaf de testcontainer op IP. Amazon geeft soms een captcha. Hoe dat vanaf
-  Cloudflare-IP's gaat weten we pas na de deploy: `GET /` laat het per winkel zien. Blijft een winkel
-  blokkeren, dan volgt een council (besluit 0007).
+- bol geeft ook vanaf Cloudflare 403. Amazon gaf in de testcontainer soms een captcha. `GET /` laat
+  per winkel zien hoe het gaat. Na een paar dagen data: council over bol (besluit 0007).
 - De EU-verplichte "laagste prijs 30 dagen" (omnibus) wordt nog niet uitgelezen. Coolblue en Amazon
   hadden hem niet op de pagina. De kolom staat klaar.
 - Er is één testproduct (Sony WH-1000XM6 zwart, bij Coolblue, bol en Amazon). Meer toevoegen:
@@ -36,7 +35,6 @@ Fase 1 is gebouwd en getest, maar nog **niet live**: de deploy wacht op het Clou
 
 ## Volgende stap
 
-1. Met het token: `cd worker && npm ci && ./scripts/deploy.sh`. Dat maakt de D1-database, past de
-   migraties toe, zet het testproduct erin en deployt. Daarna `database_id` in `wrangler.toml` committen.
-2. Na een uur `GET https://prijswacht.<subdomein>.workers.dev/` bekijken: welke winkels geven `ok`.
+1. Opnieuw deployen: `cd worker && npm ci && ./scripts/deploy.sh` (met `CLOUDFLARE_API_TOKEN`).
+2. Over een paar dagen `GET /` bekijken en de council over bol houden.
 3. Fase 2: inloggen, lijst, item detail met grafiek, live op prijs.prulwerk.nl.
