@@ -17,3 +17,7 @@ export const ROBOTS_RETRY_MIN = 30;
 export const ROBOTS_MAX_BYTES = 200_000;
 
 export const TIME_ZONE = "Europe/Amsterdam";
+
+// Capaciteit: één aanbieding per minuut, elke 3 uur → hooguit 180 actieve aanbiedingen. Iets eronder blijven.
+export const MAX_ACTIVE_OFFERS = 170;
+export const MAX_WATCHES_PER_USER = 50;

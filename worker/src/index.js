@@ -19,7 +19,7 @@ import { checkOffer } from "./check.js";
 import { BATCH_SIZE, CHECK_INTERVAL_MIN } from "./config.js";
 import { claimDue, healthSummary } from "./db.js";
 import { HttpError, corsHeaders, json, readJson } from "./http.js";
-import { itemDetail, listItems } from "./items.js";
+import { addItem, addShop, itemDetail, listItems, unwatch } from "./items.js";
 import { isoNow } from "./time.js";
 
 export default {
@@ -74,8 +74,15 @@ async function route(request, env, now) {
     return json({ ok: true });
   }
   if (method === "GET" && path === "/api/items") return json(await listItems(env, await requireUser(env, request, now), now));
+  if (method === "POST" && path === "/api/items") return json(await addItem(env, await requireUser(env, request, now), await readJson(request), now));
   const item = path.match(/^\/api\/items\/(\d+)$/);
   if (method === "GET" && item) return json(await itemDetail(env, await requireUser(env, request, now), Number(item[1]), now));
+  if (method === "DELETE" && item) {
+    await unwatch(env, await requireUser(env, request, now), Number(item[1]));
+    return json({ ok: true });
+  }
+  const shop = path.match(/^\/api\/items\/(\d+)\/winkels$/);
+  if (method === "POST" && shop) return json(await addShop(env, await requireUser(env, request, now), Number(shop[1]), await readJson(request), now));
 
   // Beheer
   if (path === "/api/beheer/uitnodigingen") {

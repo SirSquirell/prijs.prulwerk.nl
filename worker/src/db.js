@@ -66,10 +66,42 @@ export async function saveResult(db, offer, result, now) {
         .bind(offer.id, localDay(now), result.priceCents),
     );
   }
-  if (result.gtin) {
-    stmts.push(db.prepare(`UPDATE products SET ean = ?2 WHERE id = ?1 AND ean IS NULL`).bind(offer.product_id, result.gtin));
+  if (result.status === "ok") {
+    // Een geplakte link heeft eerst een tijdelijke naam; de eerste geslaagde check geeft de echte.
+    if (result.name) stmts.push(db.prepare(`UPDATE products SET name = ?2, named = 1 WHERE id = ?1 AND named = 0`).bind(offer.product_id, result.name));
+    if (result.image) stmts.push(db.prepare(`UPDATE products SET image_url = ?2 WHERE id = ?1 AND image_url IS NULL`).bind(offer.product_id, result.image));
+    if (result.gtin) {
+      stmts.push(
+        db
+          .prepare(`UPDATE products SET ean = ?2 WHERE id = ?1 AND ean IS NULL AND NOT EXISTS (SELECT 1 FROM products WHERE ean = ?2 AND id <> ?1)`)
+          .bind(offer.product_id, result.gtin),
+      );
+    }
   }
   await db.batch(stmts);
+  if (result.status === "ok" && result.gtin) await mergeByEan(db, offer.product_id, result.gtin);
+}
+
+// Hetzelfde product (zelfde EAN) bij twee winkels wordt één item. Het oudste item blijft; winkels, prijzen en
+// wie het volgt verhuizen mee. Alles in één transactie.
+export async function mergeByEan(db, productId, gtin) {
+  const target = await db.prepare(`SELECT id FROM products WHERE ean = ?1 AND id <> ?2 ORDER BY id LIMIT 1`).bind(gtin, productId).first();
+  if (!target) return null;
+  const current = await db.prepare(`SELECT ean FROM products WHERE id = ?1`).bind(productId).first();
+  if (!current || (current.ean != null && current.ean !== gtin)) return null;
+  await db.batch([
+    db
+      .prepare(
+        `INSERT OR IGNORE INTO watches (user_id, product_id, target_cents, alert_every_drop, created_at)
+         SELECT user_id, ?2, target_cents, alert_every_drop, created_at FROM watches WHERE product_id = ?1`,
+      )
+      .bind(productId, target.id),
+    db.prepare(`DELETE FROM watches WHERE product_id = ?1`).bind(productId),
+    db.prepare(`UPDATE offers SET product_id = ?2 WHERE product_id = ?1`).bind(productId, target.id),
+    db.prepare(`UPDATE offers SET active = 1 WHERE product_id = ?1 AND EXISTS (SELECT 1 FROM watches WHERE product_id = ?1)`).bind(target.id),
+    db.prepare(`DELETE FROM products WHERE id = ?1`).bind(productId),
+  ]);
+  return target.id;
 }
 
 export async function getRobotsCache(db, origin) {

@@ -37,6 +37,7 @@ export function icon(paths, size = 22) {
 
 export const ICONS = {
   list: ["M4 6h16M4 12h16M4 18h10"],
+  plus: ["M12 5v14M5 12h14"],
   user: ["M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"],
   key: ["M8 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8z", "M2 21c0-3.3 2.7-6 6-6s6 2.7 6 6", "M15 11h7M19 11v4M22 11v2"],
   out: ["M14 4h6v6M20 4l-9 9M18 14v5H5V6h5"],

@@ -78,3 +78,31 @@ describe("statussen", () => {
     expect(interpretPage({ httpStatus: 200, page, shop: "bol" })).toMatchObject({ status: "ok", priceCents: 1234, gtin: "4548736173293" });
   });
 });
+
+describe("naam uit de paginatitel", async () => {
+  const { nameFromTitle } = await import("../src/interpret.js");
+  it.each([
+    ["Sony WH-1000XM6 Zwart | Coolblue - Voor 23.59u, morgen in huis", "Sony WH-1000XM6 Zwart"],
+    ["Amazon.nl : SONY WH-1000XM6 draadloos", "SONY WH-1000XM6 draadloos"],
+    ["bol.com | Sony WH-1000XM6", "Sony WH-1000XM6"],
+    ["Philips Airfryer XXL - HD9285/96 - MediaMarkt", "Philips Airfryer XXL - HD9285/96"],
+    ["", null],
+  ])("%s", (title, expected) => {
+    expect(nameFromTitle(title)).toBe(expected);
+  });
+
+  it("coolblue: naam en afbeelding uit JSON-LD", async () => {
+    const r = await run(coolblue, "coolblue");
+    expect(r.name).toBe("Sony WH-1000XM6 Zwart");
+    expect(r.image).toMatch(/^https:\/\/image\.coolblue\.nl\//);
+  });
+
+  it("amazon: naam uit de titel als er geen JSON-LD is", async () => {
+    const r = await run(amazon, "amazon");
+    expect(r.name).toBe("sony wh-1000xm6");
+  });
+
+  it("captcha geeft geen naam", async () => {
+    expect((await run(amazonCaptcha, "amazon")).name).toBeNull();
+  });
+});

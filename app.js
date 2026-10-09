@@ -34,6 +34,17 @@ function readInviteFromHash() {
   history.replaceState(null, "", location.pathname + "#/uitnodiging");
 }
 let pendingInvite = null;
+
+// Android: gedeeld vanuit een winkel-app komt binnen als /?url=...&text=... (share_target in het manifest).
+let sharedLink = null;
+function readShareFromQuery() {
+  const q = new URLSearchParams(location.search);
+  const shared = q.get("url") || q.get("text") || q.get("title");
+  if (!shared) return;
+  sharedLink = shared.slice(0, 2000);
+  history.replaceState(null, "", "/#/toevoegen");
+}
+readShareFromQuery();
 function currentInvite() {
   if (pendingInvite) return pendingInvite;
   try {
@@ -80,6 +91,7 @@ async function render() {
     const item = route.match(/^\/item\/(\d+)$/);
     if (item) return show(await itemScreen(Number(item[1])));
     if (route === "/account") return show(await accountScreen());
+    if (route === "/toevoegen") return show(addScreen());
     return show(await listScreen());
   } catch (err) {
     if (err instanceof ApiError && err.status === 401) {
@@ -122,7 +134,13 @@ function brand() {
 function tabs(active) {
   const tab = (href, label, paths, key) =>
     h("a", { href, "aria-current": active === key ? "page" : null }, icon(paths), label);
-  return h("nav", { class: "tabs", "aria-label": "hoofdmenu" }, tab("#/", "lijst", ICONS.list, "lijst"), tab("#/account", "account", ICONS.user, "account"));
+  return h(
+    "nav",
+    { class: "tabs", "aria-label": "hoofdmenu" },
+    tab("#/", "lijst", ICONS.list, "lijst"),
+    tab("#/toevoegen", "toevoegen", ICONS.plus, "toevoegen"),
+    tab("#/account", "account", ICONS.user, "account"),
+  );
 }
 
 function busy(button, text) {
@@ -380,8 +398,9 @@ async function listScreen() {
 
   const items = data.items.map((it) => {
     const d = deltaText(it.delta);
-    const sub =
-      it.price == null
+    const sub = it.pending
+      ? "we halen de prijs op…"
+      : it.price == null
         ? `${it.shops} ${it.shops === 1 ? "winkel" : "winkels"} · nog geen prijs`
         : `laagst bij ${it.shop} · ${it.shops} ${it.shops === 1 ? "winkel" : "winkels"}`;
     return h(
@@ -392,6 +411,7 @@ async function listScreen() {
     );
   });
 
+  if (data.items.some((i) => i.pending)) refreshSoon("/");
   return h(
     "div",
     { class: "screen-wrap", style: { display: "contents" } },
@@ -416,7 +436,7 @@ async function listScreen() {
       ),
       items.length
         ? h("div", { class: "stack" }, items)
-        : h("p", { class: "muted" }, me?.isAdmin ? "je volgt nog niets." : "je volgt nog niets. toevoegen komt binnenkort; vraag het zolang aan mathijs."),
+        : h("div", { class: "card" }, h("p", { class: "muted" }, "je volgt nog niets. plak de link van een product bij toevoegen."), h("a", { class: "btn", href: "#/toevoegen" }, "iets toevoegen")),
     ),
     tabs("lijst"),
   );
@@ -425,8 +445,19 @@ async function listScreen() {
 // ---------- item ----------
 
 async function itemScreen(id) {
-  const it = await api(`/api/items/${id}`);
+  let it;
+  try {
+    it = await api(`/api/items/${id}`);
+  } catch (e) {
+    // Samengevoegd met een ander item (zelfde EAN) of niet meer gevolgd: terug naar de lijst.
+    if (e.status === 404) {
+      location.hash = "#/";
+      return listScreen();
+    }
+    throw e;
+  }
   const shops = it.offers.length;
+  if (it.pending) refreshSoon(`/item/${id}`);
 
   const chartCard =
     it.series.length >= 2
@@ -447,7 +478,7 @@ async function itemScreen(id) {
           "div",
           { class: "card" },
           h("span", { class: "label" }, "prijsverloop"),
-          h("p", { class: "muted" }, "nog te weinig geschiedenis voor een grafiek. vanaf morgen staat hier de lijn."),
+          h("p", { class: "muted" }, it.pending ? "we halen de prijs op. dat duurt meestal een minuut." : "nog te weinig geschiedenis voor een grafiek. vanaf morgen staat hier de lijn."),
         );
 
   return h(
@@ -485,9 +516,133 @@ async function itemScreen(id) {
         ),
       ),
       h("p", { class: "label small" }, "een prijs die we niet konden ophalen blijft leeg. we raden niet."),
+      addShopCard(id),
+      stopButton(id, it.name),
     ),
     tabs("lijst"),
   );
+}
+
+function addShopCard(id) {
+  const err = errorLine();
+  const input = linkInput("winkel");
+  const btn = h("button", { class: "btn quiet", type: "button" }, "winkel toevoegen");
+  btn.addEventListener("click", async () => {
+    err.textContent = "";
+    const done = busy(btn, "even wachten…");
+    try {
+      await api(`/api/items/${id}/winkels`, { body: { url: input.value } });
+      render();
+    } catch (e) {
+      done();
+      err.textContent = e.message;
+    }
+  });
+  return h(
+    "div",
+    { class: "card" },
+    h("span", { class: "label" }, "nog een winkel"),
+    h("p", { class: "muted small" }, "zelfde product bij een andere winkel? plak die link hier."),
+    h("div", { class: "field" }, h("label", { for: "link-winkel" }, "link"), input, pasteButton(input)),
+    btn,
+    err,
+  );
+}
+
+function stopButton(id, name) {
+  const btn = h("button", { class: "linkbtn warn", type: "button" }, "stop met volgen");
+  btn.addEventListener("click", async () => {
+    if (!confirm(`${name} niet meer volgen?`)) return;
+    try {
+      await api(`/api/items/${id}`, { method: "DELETE" });
+      location.hash = "#/";
+    } catch (e) {
+      alert(e.message);
+    }
+  });
+  return btn;
+}
+
+// ---------- toevoegen ----------
+
+function linkInput(key) {
+  return h("input", { id: `link-${key}`, type: "url", inputmode: "url", autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "https://www.coolblue.nl/product/…" });
+}
+
+// Plakken uit het klembord. Safari vraagt dan zelf om toestemming ("plak").
+function pasteButton(input) {
+  if (!navigator.clipboard?.readText) return null;
+  const b = h("button", { class: "btn quiet", type: "button" }, "plak link");
+  b.addEventListener("click", async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) input.value = text.trim();
+    } catch {
+      input.focus();
+    }
+  });
+  return b;
+}
+
+function addScreen() {
+  const err = errorLine();
+  const input = linkInput("nieuw");
+  if (sharedLink) {
+    input.value = sharedLink;
+    sharedLink = null;
+  }
+  const btn = h("button", { class: "btn", type: "button" }, "volgen");
+  const submit = async () => {
+    err.textContent = "";
+    if (!input.value.trim()) {
+      err.textContent = "plak eerst een link.";
+      input.focus();
+      return;
+    }
+    const done = busy(btn, "even wachten…");
+    try {
+      const { id } = await api("/api/items", { body: { url: input.value } });
+      location.hash = `#/item/${id}`;
+    } catch (e) {
+      done();
+      err.textContent = e.message;
+    }
+  };
+  btn.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submit();
+  });
+
+  const android = /Android/.test(ua);
+  return h(
+    "div",
+    { style: { display: "contents" } },
+    h(
+      "section",
+      { class: "screen" },
+      h("h1", { class: "title" }, "iets volgen"),
+      h(
+        "p",
+        { class: "muted" },
+        android
+          ? "deel een product vanuit de winkel-app of browser naar prijswacht, of kopieer de link en plak hem hier."
+          : "kopieer in de winkel-app of browser de link van het product (delen → kopieer) en plak hem hier.",
+      ),
+      h("div", { class: "field" }, h("label", { for: "link-nieuw" }, "link naar het product"), input),
+      h("div", { class: "stack" }, pasteButton(input), btn, err),
+      h("p", { class: "label small" }, "werkt met coolblue, amazon, mediamarkt en de meeste andere winkels. bol weigert ons voorlopig. volgt iemand anders het al, dan krijg je de geschiedenis er gratis bij."),
+    ),
+    tabs("toevoegen"),
+  );
+}
+
+// Zolang er een prijs onderweg is, het scherm na 20 seconden opnieuw laden (alleen als je er nog bent).
+let refreshTimer;
+function refreshSoon(route) {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    if ((location.hash.replace(/^#/, "") || "/") === route && document.visibilityState === "visible") render();
+  }, 20_000);
 }
 
 // ---------- account ----------

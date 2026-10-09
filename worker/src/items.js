@@ -1,5 +1,7 @@
 // Wat een ingelogde gebruiker ziet: zijn lijst en de details per item.
+import { MAX_ACTIVE_OFFERS, MAX_WATCHES_PER_USER } from "./config.js";
 import { HttpError } from "./http.js";
+import { normalizeProductUrl, shopFromUrl } from "./shops.js";
 import { lowestNow, seriesStats, shiftDay, weekDelta } from "./stats.js";
 import { localDay } from "./time.js";
 
@@ -60,6 +62,7 @@ export async function listItems(env, user, now) {
       price: best?.cents ?? null,
       shop: best?.shop ?? null,
       target: p.target_cents,
+      pending: mine.every((o) => !o.last_point_status),
       delta: weekDelta(best?.cents, lows.get(p.id) ?? [], today),
     };
   });
@@ -90,6 +93,7 @@ export async function itemDetail(env, user, productId, now) {
     target: product.target_cents,
     price: best?.cents ?? null,
     shop: best?.shop ?? null,
+    pending: offers.every((o) => !o.last_point_status),
     stats: seriesStats(series),
     series,
     offers: offers
@@ -105,4 +109,73 @@ export async function itemDetail(env, user, productId, now) {
       }))
       .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity)),
   };
+}
+
+// ---------- toevoegen, winkel erbij, niet meer volgen ----------
+
+function cleanUrl(input) {
+  const url = normalizeProductUrl(input);
+  if (!url) throw new HttpError(400, "dat is geen winkellink die we kunnen volgen. kopieer de link van de productpagina.");
+  return url;
+}
+
+async function ensureCapacity(db) {
+  const { n } = await db.prepare(`SELECT count(*) AS n FROM offers WHERE active = 1`).first();
+  if (n >= MAX_ACTIVE_OFFERS) throw new HttpError(503, "prijswacht volgt al zoveel winkels als hij aankan. zet eerst iets anders uit je lijst.");
+}
+
+// Link plakken: bestaat de winkellink al, dan volg je dat item (met zijn geschiedenis). Anders een nieuw item.
+export async function addItem(env, user, body, now) {
+  const db = env.DB;
+  const url = cleanUrl(body?.url);
+  const { n } = await db.prepare(`SELECT count(*) AS n FROM watches WHERE user_id = ?1`).bind(user.id).first();
+  if (n >= MAX_WATCHES_PER_USER) throw new HttpError(400, `je volgt al ${MAX_WATCHES_PER_USER} items. zet er eerst een uit je lijst.`);
+
+  let offer = await db.prepare(`SELECT id, product_id, active FROM offers WHERE url = ?1`).bind(url).first();
+  let existing = !!offer;
+  if (!offer) {
+    await ensureCapacity(db);
+    const shop = shopFromUrl(url);
+    const product = await db.prepare(`INSERT INTO products (name, named, created_at) VALUES (?1, 0, ?2) RETURNING id`).bind(`nieuw item bij ${shop}`, now).first();
+    offer = await db
+      .prepare(`INSERT INTO offers (product_id, shop, url, created_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT (url) DO NOTHING RETURNING id, product_id, active`)
+      .bind(product.id, shop, url, now)
+      .first();
+    if (!offer) {
+      // Iemand anders plakte dezelfde link net tegelijk.
+      await db.prepare(`DELETE FROM products WHERE id = ?1`).bind(product.id).run();
+      offer = await db.prepare(`SELECT id, product_id, active FROM offers WHERE url = ?1`).bind(url).first();
+      existing = true;
+    }
+  } else if (!offer.active) {
+    await ensureCapacity(db);
+    await db.prepare(`UPDATE offers SET active = 1, last_checked_at = NULL WHERE product_id = ?1`).bind(offer.product_id).run();
+  }
+  await db.prepare(`INSERT OR IGNORE INTO watches (user_id, product_id, created_at) VALUES (?1, ?2, ?3)`).bind(user.id, offer.product_id, now).run();
+  return { id: offer.product_id, existing };
+}
+
+// Nog een winkel bij een item dat je al volgt.
+export async function addShop(env, user, productId, body, now) {
+  const db = env.DB;
+  const watch = await db.prepare(`SELECT 1 FROM watches WHERE user_id = ?1 AND product_id = ?2`).bind(user.id, productId).first();
+  if (!watch) throw new HttpError(404, "niet gevonden");
+  const url = cleanUrl(body?.url);
+  const offer = await db.prepare(`SELECT product_id FROM offers WHERE url = ?1`).bind(url).first();
+  if (offer) {
+    if (offer.product_id === productId) return { id: productId };
+    throw new HttpError(409, "die link hoort al bij een ander item in prijswacht.");
+  }
+  await ensureCapacity(db);
+  await db.prepare(`INSERT INTO offers (product_id, shop, url, created_at) VALUES (?1, ?2, ?3, ?4)`).bind(productId, shopFromUrl(url), url, now).run();
+  return { id: productId };
+}
+
+// Niet meer volgen. Volgt niemand het meer, dan stopt het ophalen; de geschiedenis blijft bewaard.
+export async function unwatch(env, user, productId) {
+  const db = env.DB;
+  await db.batch([
+    db.prepare(`DELETE FROM watches WHERE user_id = ?1 AND product_id = ?2`).bind(user.id, productId),
+    db.prepare(`UPDATE offers SET active = 0 WHERE product_id = ?1 AND NOT EXISTS (SELECT 1 FROM watches WHERE product_id = ?1)`).bind(productId),
+  ]);
 }

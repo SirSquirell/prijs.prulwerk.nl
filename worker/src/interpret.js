@@ -4,7 +4,7 @@ import { parsePriceToCents } from "./price.js";
 
 // status: ok | geblokkeerd | geen_prijs | fout
 export function interpretPage({ httpStatus, page, shop }) {
-  const base = { httpStatus, priceCents: null, inStock: null, gtin: null, name: null, omnibusLowCents: null };
+  const base = { httpStatus, priceCents: null, inStock: null, gtin: null, name: null, image: null, omnibusLowCents: null };
 
   if ([401, 403, 429, 503].includes(httpStatus) || page?.captcha) {
     return { ...base, status: "geblokkeerd", detail: page?.captcha ? "captcha" : `http ${httpStatus}` };
@@ -17,9 +17,12 @@ export function interpretPage({ httpStatus, page, shop }) {
   if (product) {
     base.gtin = product.gtin;
     base.name = product.name;
+    base.image = product.image;
   }
+  // Alleen bij een geslaagde check de paginatitel als naam: een blokkadepagina heet ook "Amazon.nl".
+  const ok = (extra) => ({ ...base, name: base.name ?? nameFromTitle(page.title), status: "ok", ...extra });
   if (product?.priceCents) {
-    return { ...base, status: "ok", priceCents: product.priceCents, inStock: product.inStock, detail: null };
+    return ok({ priceCents: product.priceCents, inStock: product.inStock, detail: null });
   }
 
   if (shop === "amazon") {
@@ -27,13 +30,13 @@ export function interpretPage({ httpStatus, page, shop }) {
     const candidates = [a.label, joinWholeFraction(a.whole, a.fraction), a.legacy].map((x) => (x ?? "").trim());
     const cents = candidates.map(parsePriceToCents).find(Boolean) ?? null;
     if (cents) {
-      return { ...base, status: "ok", priceCents: cents, inStock: amazonStock(page.amazon.availability), detail: null };
+      return ok({ priceCents: cents, inStock: amazonStock(page.amazon.availability), detail: null });
     }
   }
 
   if (page.meta.price && (!page.meta.currency || page.meta.currency.toUpperCase() === "EUR")) {
     const cents = parsePriceToCents(normalizeMeta(page.meta.price));
-    if (cents) return { ...base, status: "ok", priceCents: cents, inStock: product?.inStock ?? null, detail: "meta" };
+    if (cents) return ok({ priceCents: cents, inStock: product?.inStock ?? null, detail: "meta" });
   }
 
   const reason = product ? "product zonder prijs" : "geen product op pagina";
@@ -59,4 +62,13 @@ function amazonStock(text) {
   if (/op voorraad|nog maar \d+ op voorraad|in stock/.test(t)) return true;
   if (/niet (op voorraad|beschikbaar|leverbaar)|currently unavailable|momenteel niet/.test(t)) return false;
   return null;
+}
+
+// "Sony WH-1000XM6 Zwart | Coolblue - Voor 23.59u..." → "Sony WH-1000XM6 Zwart". "Amazon.nl : Sony ..." → "Sony ...".
+export function nameFromTitle(title) {
+  let t = String(title ?? "").replace(/\s+/g, " ").trim();
+  t = t.replace(/^amazon\.[a-z.]+\s*:\s*/i, "");
+  // Winkelnaam als los deel ("bol.com | ...") overslaan.
+  t = t.split(/\s[|–—]\s|\s-\s(?=[^-]*$)/).map((x) => x.trim()).find((x) => x && !/^[\w.-]+\.(nl|com|be|de)$/i.test(x)) ?? "";
+  return t.length >= 3 ? t.slice(0, 120) : null;
 }

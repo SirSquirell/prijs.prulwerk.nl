@@ -4,6 +4,9 @@ Bijgewerkt: 2026-10-09
 
 ## Waar we staan
 
+Fase 3 (toevoegen) is live sinds 9 oktober. Plak een link bij "toevoegen", of deel hem op Android vanuit
+de winkel-app naar prijswacht. Binnen een minuut staan naam en prijs erin.
+
 Fase 1 is live sinds 9 oktober 2026, 09:17: de Worker verzamelt prijzen. Fase 2 (inloggen, lijst,
 itemdetail) is gebouwd, getest en de API is live. De frontend staat live op https://prijs.prulwerk.nl
 zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-record staat.
@@ -38,8 +41,8 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 
 - bol geeft 403, ook vanaf Cloudflare. Na een paar dagen data: council over bol (besluit 0007).
 - De EU-verplichte "laagste prijs 30 dagen" wordt nog niet uitgelezen.
-- Doelprijs en meldingen staan nog niet in de app (fase 4). Toevoegen vanuit de app is fase 3; tot dan:
-  `cd worker && npm run offer:add -- "naam" <url> [<url> ...]` (beheerders volgen het meteen).
+- Doelprijs en meldingen staan nog niet in de app (fase 4).
+- Op iPhone kan prijswacht niet in het deelmenu (Apple staat dat websites niet toe): kopiëren en plakken.
 - "Enforce HTTPS" in de Pages-instellingen aanzetten zodra GitHub het certificaat heeft.
 
 ## Beheer
@@ -48,9 +51,18 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 - Eerste beheerder of passkey kwijt: `node worker/scripts/setup-invite.js` (of `--herstel`). De link
   verschijnt alleen in die uitvoer, 24 uur geldig. Nooit in een commit of in dit bestand zetten.
 
+**Toevoegen (fase 3, besluit 0009)**
+- Link plakken of delen (Android, share target). Tracking-parameters gaan eraf, Amazon wordt `/dp/ASIN`.
+- Eerste check binnen een minuut: naam, afbeelding, EAN en prijs van de pagina.
+- Zelfde link bij een vriend: hetzelfde item met de geschiedenis die er al is. Zelfde EAN bij een andere
+  winkel: wordt één item met meerdere winkels.
+- Bij een item nog een winkel plakken, of stoppen met volgen. Volgt niemand het meer, dan stopt het
+  ophalen; de geschiedenis blijft.
+- Grenzen: 50 items per persoon, 170 actieve winkellinks in totaal (de cron haalt er 180 per 3 uur).
+
 ## Volgende stap
 
-Fase 3: item toevoegen. Uit de architect-review van 9 oktober, voor fase 3-5 (keuzes die eerdere
+Fase 4: meldingen (push), doelprijs. Hieronder de scope uit de architect-review. Uit de architect-review van 9 oktober, voor fase 3-5 (keuzes die eerdere
 besluiten raken gaan eerst langs een council):
 - Fase 3 klein houden: links plakken, de cron haalt naam, EAN en prijs op, producten met dezelfde EAN
   samenvoegen. Niet zelf de zoekpagina's van winkels bevragen (CPU, blokkades).
