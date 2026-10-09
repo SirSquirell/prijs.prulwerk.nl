@@ -111,7 +111,8 @@ Uitnodigingslink + passkey, geen e-mail, geen wachtwoord. Zie `docs/besluiten/00
   sites en Safari blokkeert cookies van andere sites.
 - Eerste admin: bij de eerste deploy maakt de Worker een eenmalige setup-uitnodiging die alleen in de
   deploy-output verschijnt.
-- WebAuthn: gebruik een bekende library (bijv. SimpleWebAuthn), niet zelf schrijven.
+- WebAuthn: SimpleWebAuthn (server in de Worker, browser-bundel in `vendor/`). Uitwerking en
+  council-aanpassingen in `docs/besluiten/0008-inloggen-uitwerking.md`.
 
 ## Meldingen
 
