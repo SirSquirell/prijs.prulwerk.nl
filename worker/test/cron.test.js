@@ -74,6 +74,17 @@ describe("cron", () => {
     expect(f.calls.filter((u) => u === CB)).toHaveLength(2);
   });
 
+  it("een mislukte robots.txt wordt na een half uur opnieuw geprobeerd, niet pas morgen", async () => {
+    await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();
+    const kapot = fakeFetch({ "https://www.coolblue.nl/robots.txt": { status: 503, body: "" } });
+    await runChecks(env, NOW, kapot);
+    expect((await points())[0]).toMatchObject({ status: "robots" });
+    const goed = fakeFetch({ "https://www.coolblue.nl/robots.txt": { body: "" }, [CB]: { body: coolblue } });
+    await runChecks(env, LATER, goed);
+    expect(goed.calls).toContain("https://www.coolblue.nl/robots.txt");
+    expect((await points())[1]).toMatchObject({ status: "ok" });
+  });
+
   it("houdt zich aan robots.txt", async () => {
     const f = fakeFetch({ "https://www.coolblue.nl/robots.txt": { body: "User-agent: *\nDisallow: /product/" } });
     await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();

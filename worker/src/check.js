@@ -1,5 +1,5 @@
 // Eén aanbieding ophalen: robots.txt, pagina, uitlezen, opslaan.
-import { FETCH_TIMEOUT_MS, ROBOTS_MAX_BYTES, ROBOTS_TOKEN, ROBOTS_TTL_MIN, USER_AGENT } from "./config.js";
+import { FETCH_TIMEOUT_MS, ROBOTS_MAX_BYTES, ROBOTS_RETRY_MIN, ROBOTS_TOKEN, ROBOTS_TTL_MIN, USER_AGENT } from "./config.js";
 import { getRobotsCache, putRobotsCache, saveResult } from "./db.js";
 import { extractPage } from "./extract.js";
 import { interpretPage } from "./interpret.js";
@@ -47,7 +47,9 @@ async function discard(response) {
 
 async function loadRobots(db, origin, now, fetchImpl) {
   const cached = await getRobotsCache(db, origin);
-  if (cached && cached.fetched_at > minutesAgo(now, ROBOTS_TTL_MIN)) {
+  // Een 5xx of geen antwoord kort bewaren: één hapering mag een winkel geen etmaal stilleggen.
+  const ttl = cached && (cached.http_status ?? 599) >= 500 ? ROBOTS_RETRY_MIN : ROBOTS_TTL_MIN;
+  if (cached && cached.fetched_at > minutesAgo(now, ttl)) {
     return robotsFromStatus(cached.http_status ?? 599, cached.body ?? "");
   }
   let status = 599;

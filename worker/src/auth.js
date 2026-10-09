@@ -158,32 +158,35 @@ export async function registerVerify(env, body, now, device) {
   if (!verification.verified) throw new HttpError(400, "passkey niet geaccepteerd");
 
   await spendChallenge(env.DB, payload);
-  // Atomair: werkt maar één keer, ook als twee tabbladen tegelijk registreren.
-  const invite = await env.DB.prepare(
-    `UPDATE invites SET used_at = ?2 WHERE token_hash = ?1 AND used_at IS NULL AND expires_at > ?2 RETURNING user_id, make_admin`,
-  )
-    .bind(payload.inv, now)
-    .first();
+  const invite = await env.DB.prepare(`SELECT user_id, make_admin FROM invites WHERE token_hash = ?1`).bind(payload.inv).first();
   if (!invite) throw new HttpError(410, "deze link is al gebruikt of verlopen");
+  const wid = invite.user_id == null ? payload.wid : (await env.DB.prepare(`SELECT webauthn_id FROM users WHERE id = ?1`).bind(invite.user_id).first())?.webauthn_id;
 
-  let userId = invite.user_id;
-  if (userId == null) {
-    const user = await env.DB.prepare(`INSERT INTO users (name, webauthn_id, is_admin, created_at) VALUES (?1, ?2, ?3, ?4) RETURNING id`)
-      .bind(payload.name, payload.wid, invite.make_admin, now)
-      .first();
-    userId = user.id;
-    if (invite.make_admin) {
-      // De beheerder volgt alles wat er al in staat (de producten uit fase 1).
-      await env.DB.prepare(`INSERT OR IGNORE INTO watches (user_id, product_id, created_at) SELECT ?1, id, ?2 FROM products`).bind(userId, now).run();
-    }
-  }
-
+  // Eén transactie: gebruiker, passkey, (voor de beheerder) wat hij volgt, en de uitnodiging op gebruikt.
+  // Elke stap alleen als de uitnodiging nog open is, zodat twee gelijktijdige pogingen er maar één opleveren.
+  const open = `EXISTS (SELECT 1 FROM invites WHERE token_hash = ?1 AND used_at IS NULL AND expires_at > ?2)`;
   const { credential } = verification.registrationInfo;
-  await env.DB.prepare(
-    `INSERT INTO passkeys (user_id, credential_id, public_key, sign_count, transports, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`,
-  )
-    .bind(userId, credential.id, b64url(credential.publicKey), credential.counter, JSON.stringify(credential.transports ?? []), now)
-    .run();
+  const results = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO users (name, webauthn_id, is_admin, created_at) SELECT ?3, ?4, ?5, ?2 WHERE ?6 IS NULL AND ${open}`).bind(
+      payload.inv,
+      now,
+      payload.name,
+      wid,
+      invite.make_admin,
+      invite.user_id,
+    ),
+    env.DB.prepare(
+      `INSERT INTO passkeys (user_id, credential_id, public_key, sign_count, transports, created_at)
+       SELECT u.id, ?4, ?5, ?6, ?7, ?2 FROM users u WHERE u.webauthn_id = ?3 AND ${open}`,
+    ).bind(payload.inv, now, wid, credential.id, b64url(credential.publicKey), credential.counter, JSON.stringify(credential.transports ?? [])),
+    env.DB.prepare(
+      `INSERT OR IGNORE INTO watches (user_id, product_id, created_at)
+       SELECT u.id, p.id, ?2 FROM users u, products p WHERE u.webauthn_id = ?3 AND ?4 = 1 AND ?5 IS NULL AND ${open}`,
+    ).bind(payload.inv, now, wid, invite.make_admin, invite.user_id),
+    env.DB.prepare(`UPDATE invites SET used_at = ?2 WHERE token_hash = ?1 AND used_at IS NULL AND expires_at > ?2 RETURNING token_hash`).bind(payload.inv, now),
+  ]);
+  if (!results[3].results.length) throw new HttpError(410, "deze link is al gebruikt of verlopen");
+  const userId = (await env.DB.prepare(`SELECT id FROM users WHERE webauthn_id = ?1`).bind(wid).first()).id;
 
   const token = await createSession(env.DB, userId, device, now);
   return { token, user: await userInfo(env.DB, userId) };

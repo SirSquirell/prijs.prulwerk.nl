@@ -11,16 +11,16 @@ const OFFER_COLUMNS = `
   (SELECT checked_at FROM price_points p WHERE p.offer_id = o.id AND status = 'ok' ORDER BY checked_at DESC LIMIT 1) AS last_ok_at,
   (SELECT price_cents FROM price_points p WHERE p.offer_id = o.id AND status = 'ok' ORDER BY checked_at DESC LIMIT 1) AS last_ok_price`;
 
-async function dailyLows(db, productIds, fromDay) {
-  if (!productIds.length) return new Map();
-  const marks = productIds.map((_, i) => `?${i + 2}`).join(",");
+// productFilter: SQL die product-id's oplevert, met ?2 als parameter. Geen lange IN-lijst: D1 staat
+// hooguit 100 parameters per query toe.
+async function dailyLows(db, productFilter, param, fromDay) {
   const rows = (
     await db
       .prepare(
         `SELECT o.product_id, d.day, min(d.min_cents) AS low FROM price_daily d JOIN offers o ON o.id = d.offer_id
-         WHERE d.day >= ?1 AND o.product_id IN (${marks}) AND o.active = 1 GROUP BY o.product_id, d.day ORDER BY d.day`,
+         WHERE d.day >= ?1 AND o.active = 1 AND o.product_id IN (${productFilter}) GROUP BY o.product_id, d.day ORDER BY d.day`,
       )
-      .bind(fromDay, ...productIds)
+      .bind(fromDay, param)
       .all()
   ).results;
   const map = new Map();
@@ -30,6 +30,8 @@ async function dailyLows(db, productIds, fromDay) {
   }
   return map;
 }
+
+const WATCHED = "SELECT product_id FROM watches WHERE user_id = ?2";
 
 export async function listItems(env, user, now) {
   const db = env.DB;
@@ -42,17 +44,11 @@ export async function listItems(env, user, now) {
       .bind(user.id)
       .all()
   ).results;
-  const ids = products.map((p) => p.id);
-  const offers = ids.length
-    ? (
-        await db
-          .prepare(`SELECT ${OFFER_COLUMNS} FROM offers o WHERE o.active = 1 AND o.product_id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`)
-          .bind(...ids)
-          .all()
-      ).results
-    : [];
+  const offers = (
+    await db.prepare(`SELECT ${OFFER_COLUMNS} FROM offers o WHERE o.active = 1 AND o.product_id IN (SELECT product_id FROM watches WHERE user_id = ?1)`).bind(user.id).all()
+  ).results;
   const today = localDay(now);
-  const lows = await dailyLows(db, ids, shiftDay(today, -8));
+  const lows = await dailyLows(db, WATCHED, user.id, shiftDay(today, -8));
 
   const items = products.map((p) => {
     const mine = offers.filter((o) => o.product_id === p.id);
@@ -84,7 +80,7 @@ export async function itemDetail(env, user, productId, now) {
 
   const offers = (await db.prepare(`SELECT ${OFFER_COLUMNS} FROM offers o WHERE o.active = 1 AND o.product_id = ?1 ORDER BY o.shop`).bind(productId).all()).results;
   const today = localDay(now);
-  const series = (await dailyLows(db, [productId], shiftDay(today, -89))).get(productId) ?? [];
+  const series = (await dailyLows(db, "?2", productId, shiftDay(today, -89))).get(productId) ?? [];
   const best = lowestNow(offers);
 
   return {

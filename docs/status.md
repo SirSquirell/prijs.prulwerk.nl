@@ -50,4 +50,15 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 
 ## Volgende stap
 
-Fase 3: item toevoegen met automatisch winkels zoeken en EAN-match.
+Fase 3: item toevoegen. Uit de architect-review van 9 oktober, voor fase 3-5 (keuzes die eerdere
+besluiten raken gaan eerst langs een council):
+- Fase 3 klein houden: links plakken, de cron haalt naam, EAN en prijs op, producten met dezelfde EAN
+  samenvoegen. Niet zelf de zoekpagina's van winkels bevragen (CPU, blokkades).
+- Workers AI waarschijnlijk niet nodig: matchen op EAN, teksten uit vaste zinnen (raakt besluit 0005).
+- Over bol beslissen: "onbekend" accepteren, geen omwegen (raakt besluit 0007).
+- Fase 4: meldingen vanuit de cron, stille uren als vaste 23-08, één bewakingsmelding als er 24 uur
+  geen enkele geslaagde check was.
+- Fase 5: oordeel tegen korte en gatenrijke geschiedenis bestand maken ("te weinig geschiedenis").
+- Niet doen: omnibus-prijs uitlezen, geschiedenis van andere sites, apart black friday-scherm,
+  opgeslagen oordelen, telegram, instelbare stille uren.
+- Nu al: de verlanglijst van Mathijs en vrienden erin zetten, want elke dag eerder telt.

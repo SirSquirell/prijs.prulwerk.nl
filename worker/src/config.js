@@ -13,6 +13,7 @@ export const BATCH_SIZE = 1;
 
 export const FETCH_TIMEOUT_MS = 15_000;
 export const ROBOTS_TTL_MIN = 24 * 60;
+export const ROBOTS_RETRY_MIN = 30;
 export const ROBOTS_MAX_BYTES = 200_000;
 
 export const TIME_ZONE = "Europe/Amsterdam";

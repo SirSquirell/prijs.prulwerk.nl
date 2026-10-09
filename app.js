@@ -51,7 +51,15 @@ function clearInvite() {
   }
 }
 
+// Elke render krijgt een nummer. Komt een oud antwoord te laat binnen (traag 4g, snel terugtikken), dan
+// tekent hij niet over het scherm dat er inmiddels staat.
+let renderId = 0;
+
 async function render() {
+  const id = ++renderId;
+  const show = (node) => {
+    if (id === renderId) paint(node);
+  };
   readInviteFromHash();
   const route = location.hash.replace(/^#/, "") || "/";
 
@@ -82,7 +90,7 @@ async function render() {
   }
 }
 
-function show(node) {
+function paint(node) {
   app.replaceChildren(node);
   window.scrollTo(0, 0);
   const heading = app.querySelector("h1");
@@ -199,7 +207,7 @@ function loginScreen() {
       h("p", { class: "muted" }, "we volgen het bij nederlandse winkels en melden het als het zakt. rond black friday zeggen we ook of de korting echt is."),
     ),
     inAppBrowser || !browserSupportsWebAuthn() ? inAppWarning() : h("div", { class: "stack" }, btn, err),
-    h("p", { class: "label push-down small" }, "geen wachtwoord. dit apparaat onthoudt je 30 dagen. alleen op uitnodiging."),
+    h("p", { class: "label push-down small" }, "geen wachtwoord. op je beginscherm blijf je 30 dagen ingelogd. alleen op uitnodiging."),
   );
 }
 
@@ -488,14 +496,25 @@ async function adminPanel() {
     if (u.id !== me.id) {
       const again = h("button", { class: "linkbtn", type: "button" }, "nieuwe link");
       again.addEventListener("click", async () => {
-        const { link, expires_at } = await api("/api/beheer/uitnodigingen", { body: { userId: u.id } });
-        result.replaceChildren(...inviteResult(link, expires_at, u.name));
+        err.textContent = "";
+        try {
+          const { link, expires_at } = await api("/api/beheer/uitnodigingen", { body: { userId: u.id } });
+          result.replaceChildren(...inviteResult(link, expires_at, u.name));
+          result.scrollIntoView({ block: "nearest" });
+        } catch (e) {
+          err.textContent = e.message;
+        }
       });
       const revoke = h("button", { class: "linkbtn warn", type: "button" }, "intrekken");
       revoke.addEventListener("click", async () => {
         if (!confirm(`${u.name} uitloggen op alle apparaten en passkeys verwijderen?`)) return;
-        await api(`/api/beheer/gebruikers/${u.id}/intrekken`, { body: {} });
-        render();
+        try {
+          await api(`/api/beheer/gebruikers/${u.id}/intrekken`, { body: {} });
+          render();
+        } catch (e) {
+          err.textContent = `intrekken niet gelukt: ${e.message}`;
+          err.scrollIntoView({ block: "nearest" });
+        }
       });
       row.append(h("span", { class: "stack", style: { gap: 0 } }, again, revoke));
     }

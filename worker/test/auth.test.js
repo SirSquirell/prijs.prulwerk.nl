@@ -69,6 +69,20 @@ describe("uitnodiging + passkey", () => {
     expect((await register(invite, await createAuthenticator())).status).toBe(200);
   });
 
+  it("twee registraties met dezelfde uitnodiging tegelijk: één account, één passkey", async () => {
+    const invite = await adminInvite();
+    const a = await createAuthenticator();
+    const b = await createAuthenticator();
+    const oa = await call("/api/registreren/opties", { body: { invite, name: "a" } });
+    const ob = await call("/api/registreren/opties", { body: { invite, name: "b" } });
+    const ra = { invite, challengeToken: oa.body.challengeToken, response: await a.register(oa.body.options) };
+    const rb = { invite, challengeToken: ob.body.challengeToken, response: await b.register(ob.body.options) };
+    const [x, y] = await Promise.all([call("/api/registreren", { body: ra }), call("/api/registreren", { body: rb })]);
+    expect([x.status, y.status].sort()).toEqual([200, 410]);
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM users").first()).n).toBe(1);
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM passkeys").first()).n).toBe(1);
+  });
+
   it("verlopen uitnodiging werkt niet", async () => {
     const invite = (await createInvite(env.DB, { name: "x" }, "2026-01-01T00:00:00Z")).token;
     expect((await call("/api/uitnodiging", { body: { invite } })).status).toBe(410);
