@@ -53,7 +53,9 @@ export async function saveResult(db, offer, result, now) {
       .prepare(`UPDATE offers SET last_checked_at = ?2, last_status = ?3, last_error = ?4 WHERE id = ?1`)
       .bind(offer.id, now, result.status, result.status === "ok" ? null : result.detail ?? result.status),
   ];
-  if (result.status === "ok" && result.priceCents) {
+  // Een uitverkochte of pre-orderprijs is geen prijs waar je voor kunt afrekenen; hij blijft in price_points
+  // (in_stock = 0) maar vormt geen dagwaarde. inStock is null bij onbekend, dus !== false.
+  if (result.status === "ok" && result.priceCents && result.inStock !== false) {
     stmts.push(
       db
         .prepare(

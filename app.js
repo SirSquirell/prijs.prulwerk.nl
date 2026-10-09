@@ -5,6 +5,12 @@ import { h, icon, ICONS } from "./dom.js";
 import { blackFriday, deltaText, euro, offerMeta, when } from "./format.js";
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from "./vendor/simplewebauthn-browser-14.0.0.js";
 
+// Pages kan geen frame-ancestors sturen; daarom hier. Een geframede app doet niets.
+if (window.top !== window.self) {
+  document.body.replaceChildren(h("p", { class: "pad" }, "prijswacht werkt niet in een frame. open prijs.prulwerk.nl zelf."));
+  throw new Error("geframed");
+}
+
 const app = document.getElementById("app");
 const INVITE_KEY = "prijswacht.uitnodiging";
 let me = null;
@@ -359,7 +365,7 @@ async function listScreen() {
         "div",
         { class: "between label" },
         h("span", {}, `${data.items.length} ${data.items.length === 1 ? "item" : "items"} · ${data.shops} ${data.shops === 1 ? "winkel" : "winkels"}`),
-        data.last_check ? h("span", {}, `laatste check ${when(data.last_check)}`) : null,
+        lastPriceLine(data),
       ),
       items.length
         ? h("div", { class: "stack" }, items)
@@ -367,6 +373,13 @@ async function listScreen() {
     ),
     tabs("lijst"),
   );
+}
+
+// Wanneer kwam er voor het laatst een prijs binnen? Oranje na twee gemiste cycli van 3 uur.
+function lastPriceLine(data) {
+  if (!data.shops) return null;
+  const stale = !data.last_ok || Date.now() - Date.parse(data.last_ok) > 6 * 3_600_000;
+  return h("span", { class: stale ? "up" : "" }, data.last_ok ? `laatste prijs ${when(data.last_ok)}` : "nog geen prijs binnen");
 }
 
 // ---------- item ----------

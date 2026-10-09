@@ -1,5 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { MAX_REDIRECTS } from "../src/config.js";
 import { runChecks } from "../src/index.js";
 import coolblue from "./fixtures/coolblue.html?raw";
 
@@ -14,7 +15,7 @@ function fakeFetch(routes) {
     const r = routes[u];
     if (r instanceof Error) throw r;
     if (!r) return new Response("weg", { status: 404 });
-    return new Response(r.body, { status: r.status ?? 200, headers: { "content-type": "text/html" } });
+    return new Response(r.body, { status: r.status ?? 200, headers: { "content-type": "text/html", ...(r.headers ?? {}) } });
   };
   fn.calls = calls;
   return fn;
@@ -129,6 +130,61 @@ describe("cron", () => {
       { day: "2026-10-08", min_cents: 28000, max_cents: 32000, close_cents: 32000 },
       { day: "2026-10-09", min_cents: 31000, max_cents: 31000, close_cents: 31000 },
     ]);
+  });
+
+  it("uitverkocht: wel een meetpunt, geen dagwaarde", async () => {
+    await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();
+    const met = (prijs, availability) =>
+      fakeFetch({
+        "https://www.coolblue.nl/robots.txt": { body: "" },
+        [CB]: { body: `<script type="application/ld+json">{"@type":"Product","name":"x","offers":{"@type":"Offer","price":${prijs},"availability":"https://schema.org/${availability}"}}</script>` },
+      });
+    await runChecks(env, NOW, met(199, "OutOfStock"));
+    const p = await points();
+    expect(p).toHaveLength(1);
+    expect(p[0]).toMatchObject({ status: "ok", price_cents: 19900, in_stock: 0 });
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM price_daily").first()).n).toBe(0);
+
+    await runChecks(env, LATER, met(209, "InStock"));
+    const d = (await env.DB.prepare("SELECT min_cents, max_cents, close_cents FROM price_daily").all()).results;
+    expect(d).toEqual([{ min_cents: 20900, max_cents: 20900, close_cents: 20900 }]);
+  });
+
+  it("volgt een redirect en toetst robots.txt van de bestemming", async () => {
+    await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();
+    const f = fakeFetch({
+      "https://www.coolblue.nl/robots.txt": { body: "" },
+      [CB]: { status: 302, headers: { Location: "https://shop.example/p/1" } },
+      "https://shop.example/robots.txt": { body: "User-agent: *\nDisallow: /p/" },
+    });
+    await runChecks(env, NOW, f);
+    expect(f.calls).toContain("https://shop.example/robots.txt");
+    expect(f.calls).not.toContain("https://shop.example/p/1");
+    expect((await points())[0]).toMatchObject({ status: "robots" });
+  });
+
+  it("een toegestane redirect levert gewoon een prijs", async () => {
+    await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();
+    const f = fakeFetch({
+      "https://www.coolblue.nl/robots.txt": { body: "" },
+      [CB]: { status: 302, headers: { Location: "https://shop.example/p/1" } },
+      "https://shop.example/robots.txt": { body: "" },
+      "https://shop.example/p/1": { body: coolblue },
+    });
+    await runChecks(env, NOW, f);
+    expect((await points())[0]).toMatchObject({ status: "ok", price_cents: 35900 });
+    expect(f.calls.filter((u) => u === "https://shop.example/p/1")).toHaveLength(1);
+  });
+
+  it("redirectlus stopt na MAX_REDIRECTS", async () => {
+    await env.DB.prepare("UPDATE offers SET active = 0 WHERE id = 2").run();
+    const f = fakeFetch({
+      "https://www.coolblue.nl/robots.txt": { body: "" },
+      [CB]: { status: 302, headers: { Location: CB } },
+    });
+    await runChecks(env, NOW, f);
+    expect((await points())[0]).toMatchObject({ status: "fout", detail: "te veel redirects" });
+    expect(f.calls.filter((u) => u === CB)).toHaveLength(MAX_REDIRECTS + 1);
   });
 
   it("vult de EAN van het product als die nog leeg is", async () => {

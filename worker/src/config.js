@@ -11,6 +11,8 @@ export const CHECK_INTERVAL_MIN = 180;
 // aanroep, dus één per keer. 1440 checks per dag is genoeg voor 180 aanbiedingen elke 3 uur.
 export const BATCH_SIZE = 1;
 
+// Elke hop wordt opnieuw langs robots.txt van die host gehaald.
+export const MAX_REDIRECTS = 3;
 export const FETCH_TIMEOUT_MS = 15_000;
 export const ROBOTS_TTL_MIN = 24 * 60;
 export const ROBOTS_RETRY_MIN = 30;

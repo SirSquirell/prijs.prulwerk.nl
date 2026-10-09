@@ -232,3 +232,16 @@ describe("cors", () => {
     expect(res.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
   });
 });
+
+describe("invoer", () => {
+  it("een body die geen object is geeft 400, geen 500", async () => {
+    for (const raw of ["null", "[]", '"x"']) {
+      const res = await worker.fetch(
+        new Request("https://api.test/api/uitnodiging", { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: raw }),
+        env,
+      );
+      expect(res.status).toBe(400);
+      expect((await res.json()).fout).toBe("ongeldige json");
+    }
+  });
+});

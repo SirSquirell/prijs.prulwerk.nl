@@ -16,3 +16,13 @@ export function shopFromUrl(url) {
   }
   return host;
 }
+
+// Dezelfde pagina is dezelfde aanbieding: fragment en bekende trackingparameters eraf. Alleen https.
+const TRACKING = /^(utm_|ref_?$|tag$|bltgh$|referrer$|gclid$|fbclid$|srsltid$)/;
+export function normalizeOfferUrl(raw) {
+  const url = new URL(raw);
+  if (url.protocol !== "https:") throw new Error(`alleen https: ${raw}`);
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key);
+  return url.href;
+}

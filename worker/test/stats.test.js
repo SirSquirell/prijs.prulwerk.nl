@@ -24,6 +24,15 @@ describe("stats", () => {
     expect(lowestNow([{ shop: "bol", last_point_status: "geblokkeerd" }])).toBeNull();
   });
 
+  it("laagste nu slaat een winkel over die zegt dat het uitverkocht is", () => {
+    const offers = [
+      { shop: "coolblue", last_point_status: "ok", last_price: 29900, last_in_stock: 0 },
+      { shop: "amazon", last_point_status: "ok", last_price: 35900, last_in_stock: null },
+    ];
+    expect(lowestNow(offers)).toEqual({ cents: 35900, shop: "amazon" });
+    expect(lowestNow([offers[0]])).toBeNull();
+  });
+
   it("verschil met een week geleden", () => {
     const series = [
       { day: "2026-10-01", low: 34900 },

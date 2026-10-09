@@ -36,9 +36,12 @@ export async function readJson(request) {
   if (!(request.headers.get("Content-Type") ?? "").includes("application/json")) throw new HttpError(415, "verwacht json");
   const text = await request.text();
   if (text.length > 20_000) throw new HttpError(413, "te groot");
+  let parsed;
   try {
-    return JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch {
     throw new HttpError(400, "ongeldige json");
   }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new HttpError(400, "ongeldige json");
+  return parsed;
 }

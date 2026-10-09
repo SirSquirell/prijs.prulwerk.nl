@@ -14,12 +14,14 @@ export function seriesStats(series) {
   return { low: Math.min(...lows), median: median(lows), high: Math.max(...lows), days: lows.length };
 }
 
-// Huidige prijs per aanbieding: alleen als de laatste check gelukt is. Anders onbekend, nooit de oude prijs.
+// Huidige prijs per aanbieding: alleen als de laatste check gelukt is en de winkel niet zegt dat het uitverkocht is.
+// Anders onbekend, nooit de oude prijs. in_stock NULL (onbekend) telt wel mee.
 // offers: [{ shop, last_point_status, last_price, ... }] (status van de laatste check, niet "bezig") → { cents, shop } of null.
 export function lowestNow(offers) {
   let best = null;
   for (const o of offers) {
     if (o.last_point_status !== "ok" || !Number.isFinite(o.last_price)) continue;
+    if (o.last_in_stock === 0) continue;
     if (!best || o.last_price < best.cents) best = { cents: o.last_price, shop: o.shop };
   }
   return best;

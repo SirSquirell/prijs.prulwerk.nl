@@ -1,5 +1,5 @@
 // Eén aanbieding ophalen: robots.txt, pagina, uitlezen, opslaan.
-import { FETCH_TIMEOUT_MS, ROBOTS_MAX_BYTES, ROBOTS_RETRY_MIN, ROBOTS_TOKEN, ROBOTS_TTL_MIN, USER_AGENT } from "./config.js";
+import { FETCH_TIMEOUT_MS, MAX_REDIRECTS, ROBOTS_MAX_BYTES, ROBOTS_RETRY_MIN, ROBOTS_TOKEN, ROBOTS_TTL_MIN, USER_AGENT } from "./config.js";
 import { getRobotsCache, putRobotsCache, saveResult } from "./db.js";
 import { extractPage } from "./extract.js";
 import { interpretPage } from "./interpret.js";
@@ -24,20 +24,24 @@ export async function checkOffer(env, offer, now, fetchImpl = fetch) {
 }
 
 async function fetchAndInterpret(env, offer, now, fetchImpl) {
-  const url = new URL(offer.url);
-  const robots = await loadRobots(env.DB, url.origin, now, fetchImpl);
-  if (!isAllowed(robots, ROBOTS_TOKEN, url.pathname + url.search)) {
-    return { status: "robots", httpStatus: null, priceCents: null, inStock: null, detail: "robots.txt verbiedt dit pad" };
+  let url = new URL(offer.url);
+  for (let hop = 0; ; hop++) {
+    const robots = await loadRobots(env.DB, url.origin, now, fetchImpl);
+    if (!isAllowed(robots, ROBOTS_TOKEN, url.pathname + url.search)) {
+      return { status: "robots", httpStatus: null, priceCents: null, inStock: null, detail: hop ? "robots.txt verbiedt het doel van de redirect" : "robots.txt verbiedt dit pad" };
+    }
+    const response = await fetchImpl(url.href, { headers: HEADERS, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const location = response.status >= 300 && response.status < 400 ? response.headers.get("Location") : null;
+    if (!location) {
+      const ok = response.status >= 200 && response.status < 300;
+      const page = ok ? await extractPage(response, offer.shop) : await discard(response);
+      return interpretPage({ httpStatus: response.status, page, shop: offer.shop });
+    }
+    await discard(response);
+    if (hop >= MAX_REDIRECTS) return { status: "fout", httpStatus: response.status, priceCents: null, inStock: null, detail: "te veel redirects" };
+    url = new URL(location, url); // relatieve Location mag
+    if (url.protocol !== "https:") return { status: "fout", httpStatus: response.status, priceCents: null, inStock: null, detail: "redirect naar " + url.protocol };
   }
-
-  const response = await fetchImpl(offer.url, {
-    headers: HEADERS,
-    redirect: "follow",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  const ok = response.status >= 200 && response.status < 300;
-  const page = ok ? await extractPage(response, offer.shop) : await discard(response);
-  return interpretPage({ httpStatus: response.status, page, shop: offer.shop });
 }
 
 async function discard(response) {

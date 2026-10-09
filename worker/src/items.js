@@ -64,7 +64,8 @@ export async function listItems(env, user, now) {
     };
   });
   const lastCheck = offers.reduce((max, o) => (o.last_checked_at && o.last_checked_at > max ? o.last_checked_at : max), "");
-  return { items, shops: offers.length, last_check: lastCheck || null };
+  const lastOk = offers.reduce((max, o) => (o.last_ok_at && o.last_ok_at > max ? o.last_ok_at : max), "");
+  return { items, shops: offers.length, last_check: lastCheck || null, last_ok: lastOk || null };
 }
 
 export async function itemDetail(env, user, productId, now) {
