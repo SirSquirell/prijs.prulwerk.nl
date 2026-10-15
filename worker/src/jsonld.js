@@ -18,6 +18,7 @@ export function productFromJsonLd(texts) {
     if (!offer) continue;
     return {
       name: typeof product.name === "string" ? product.name.trim() : null,
+      image: imageOf(product.image),
       gtin: gtinOf(product) ?? gtinOf(offer.node),
       priceCents: offer.priceCents,
       currency: offer.currency,
@@ -26,7 +27,7 @@ export function productFromJsonLd(texts) {
   }
   if (products.length) {
     const p = products[0];
-    return { name: typeof p.name === "string" ? p.name.trim() : null, gtin: gtinOf(p), priceCents: null, currency: null, inStock: null };
+    return { name: typeof p.name === "string" ? p.name.trim() : null, image: imageOf(p.image), gtin: gtinOf(p), priceCents: null, currency: null, inStock: null };
   }
   return null;
 }
@@ -111,4 +112,10 @@ function gtinOf(node) {
     if (g) return g;
   }
   return null;
+}
+
+function imageOf(image) {
+  const first = Array.isArray(image) ? image[0] : image;
+  const url = typeof first === "string" ? first : first?.url;
+  return typeof url === "string" && /^https:\/\//.test(url) && url.length < 1000 ? url : null;
 }

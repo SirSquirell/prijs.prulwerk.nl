@@ -15,7 +15,7 @@ describe("productFromJsonLd", () => {
         offers: { "@type": "Offer", price: "359.00", priceCurrency: "EUR", availability: "https://schema.org/InStock" },
       }),
     ]);
-    expect(p).toEqual({ name: "Sony WH-1000XM6", gtin: "4548736173293", priceCents: 35900, currency: "EUR", inStock: true });
+    expect(p).toEqual({ name: "Sony WH-1000XM6", image: null, gtin: "4548736173293", priceCents: 35900, currency: "EUR", inStock: true });
   });
 
   it("vindt een Product in @graph en in een lijst", () => {

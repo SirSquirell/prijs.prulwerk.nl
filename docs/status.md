@@ -4,6 +4,9 @@ Bijgewerkt: 2026-10-09
 
 ## Waar we staan
 
+Fase 3 (toevoegen) is live sinds 9 oktober. Plak een link bij "toevoegen", of deel hem op Android vanuit
+de winkel-app naar prijswacht. Binnen een minuut staan naam en prijs erin.
+
 Fase 1 is live sinds 9 oktober 2026, 09:17: de Worker verzamelt prijzen. Fase 2 (inloggen, lijst,
 itemdetail) is gebouwd, getest en de API is live. De frontend staat live op https://prijs.prulwerk.nl
 zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-record staat.
@@ -16,8 +19,7 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 - Prijs uit schema.org JSON-LD, eigen parser voor Amazon, meta-tags als laatste redmiddel.
 - Elke check in `price_points` met een status (`ok`, `geblokkeerd`, `geen_prijs`, `robots`, `fout`). Een
   onbekende prijs blijft leeg. `price_daily` houdt per dag min, max en slot bij.
-- robots.txt gerespecteerd, ook voor elke redirect-hop (hooguit 3). `GET /` toont per winkel hoe het afgelopen etmaal ging.
-- Uitverkocht of pre-order (in_stock = 0) telt niet mee als laagste prijs en komt niet in `price_daily` (besluit 0009).
+- robots.txt gerespecteerd. `GET /` toont per winkel hoe het afgelopen etmaal ging.
 - Eerste checks vanaf Cloudflare: Coolblue €359,00, Amazon €300,71, bol 403.
 
 **Inloggen en app (fase 2)**
@@ -26,12 +28,12 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
   zolang je de app gebruikt. Alleen hashes van tokens in D1.
 - Beheer in de app (account): uitnodiging maken met naam, nieuwe link voor wie zijn passkey kwijt is,
   iemand intrekken, overzicht van uitnodigingen.
-- Schermen: inloggen, uitnodiging, klaar (met uitleg beginscherm), je lijst met black friday-aftelling, toont wanneer de laatste prijs binnenkwam (oranje als dat langer dan 6 uur geleden is),
+- Schermen: inloggen, uitnodiging, klaar (met uitleg beginscherm), je lijst met black friday-aftelling,
   item met grafiek (laagste prijs per dag, 90d laag/mediaan/hoog) en prijs per winkel, account.
 - Waarschuwing in browsers van apps (whatsapp e.d.): eerst openen in safari of chrome.
 - PWA: manifest, iconen (prulwerk-kaart met dalende lijn), service worker.
-- CSP zonder externe scripts; de passkey-library staat in `vendor/`. Alle tekst via `textContent`; de app weigert in een frame te draaien.
-- 113 tests, waaronder echte passkey-registraties en -logins met een nep-authenticator, plus een
+- CSP zonder externe scripts; de passkey-library staat in `vendor/`. Alle tekst via `textContent`.
+- 91 tests, waaronder echte passkey-registraties en -logins met een nep-authenticator, plus een
   doorloop in Chromium met een virtuele passkey (uitnodiging → lijst → item → uitnodigen → uitloggen →
   inloggen).
 
@@ -39,13 +41,17 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 
 - bol geeft 403, ook vanaf Cloudflare. Na een paar dagen data: council over bol (besluit 0007).
 - De EU-verplichte "laagste prijs 30 dagen" wordt nog niet uitgelezen.
-- Doelprijs en meldingen staan nog niet in de app (fase 4). Toevoegen vanuit de app is fase 3; tot dan:
-  `cd worker && npm run offer:add -- "naam" <url> [<url> ...]` (beheerders volgen het meteen). Het script weigert een link die al gevolgd wordt en haalt trackingparameters eraf.
-- Bewaking (fase 4): naast de melding "24 uur geen geslaagde check" ook de 'afgebroken'-rijen (status fout, detail afgebroken) apart tellen in `GET /`. extract.js meet 6-9 ms tegen een limiet van 10 ms; nu zitten die rijen verstopt in het totaal 'fout'.
-- Fonts zelf hosten (Archivo, Instrument Sans en JetBrains Mono als woff2 in `/fonts`), in de SW-shell zetten en de CSP terug naar `style-src 'self'` en `font-src 'self'`. Nu gaat elk bezoek langs Google en vallen de fonts offline weg. Raakt docs/design/README.md ("via Google Fonts").
-- Capaciteit: 1440 checks per dag bij 8 checks per aanbieding is 180 aanbiedingen; daarboven rekt `claimDue` het interval stilzwijgend op. Bij ~150 aanbiedingen: een `capacity`-veld in `GET /` en besluiten of price_points ouder dan N dagen wordt uitgedund.
-- Frontend-tests zonder browser voor format.js (euro, deltaText, offerMeta, blackFriday met vaste datums) en de x-as van chart.js (gaten blijven gaten). Vraagt een `node --test`-script in de root.
+- Doelprijs en meldingen staan nog niet in de app (fase 4).
+- Op iPhone kan prijswacht niet in het deelmenu (Apple staat dat websites niet toe): kopiëren en plakken.
 - "Enforce HTTPS" in de Pages-instellingen aanzetten zodra GitHub het certificaat heeft.
+
+## Hardening 9 oktober (besluit 0010)
+
+- Uitverkocht of pre-order telt niet als "laagst nu" en niet in `price_daily`.
+- Een redirect wordt getoetst aan robots.txt van de bestemming.
+- De lijst toont "laatste prijs" (laatste geslaagde check), oranje na 6 uur zonder prijs.
+- `readJson` geeft 400 op een body die geen object is; framebuster in `app.js`.
+- Tests op het leespad in `worker/test/items-leespad.test.js`.
 
 ## Beheer
 
@@ -53,11 +59,20 @@ zodra deze branch op `main` staat (GitHub Pages serveert `main` `/`). Het DNS-re
 - Eerste beheerder of passkey kwijt: `node worker/scripts/setup-invite.js` (of `--herstel`). De link
   verschijnt alleen in die uitvoer, 24 uur geldig. Nooit in een commit of in dit bestand zetten.
 
+**Toevoegen (fase 3, besluit 0009)**
+- Link plakken of delen (Android, share target). Tracking-parameters gaan eraf, Amazon wordt `/dp/ASIN`.
+- Eerste check binnen een minuut: naam, afbeelding, EAN en prijs van de pagina.
+- Zelfde link bij een vriend: hetzelfde item met de geschiedenis die er al is. Zelfde EAN bij een andere
+  winkel: wordt één item met meerdere winkels.
+- Bij een item nog een winkel plakken, of stoppen met volgen. Volgt niemand het meer, dan stopt het
+  ophalen; de geschiedenis blijft.
+- Grenzen: 50 items per persoon, 170 actieve winkellinks in totaal (de cron haalt er 180 per 3 uur).
+
 ## Volgende stap
 
-Fase 3: item toevoegen. Uit de architect-review van 9 oktober, voor fase 3-5 (keuzes die eerdere
+Fase 4: meldingen (push), doelprijs. Hieronder de scope uit de architect-review. Uit de architect-review van 9 oktober, voor fase 3-5 (keuzes die eerdere
 besluiten raken gaan eerst langs een council):
-- Fase 3 klein houden (hergebruik `normalizeOfferUrl` uit `shops.js`): links plakken, de cron haalt naam, EAN en prijs op, producten met dezelfde EAN
+- Fase 3 klein houden: links plakken, de cron haalt naam, EAN en prijs op, producten met dezelfde EAN
   samenvoegen. Niet zelf de zoekpagina's van winkels bevragen (CPU, blokkades).
 - Workers AI waarschijnlijk niet nodig: matchen op EAN, teksten uit vaste zinnen (raakt besluit 0005).
 - Over bol beslissen: "onbekend" accepteren, geen omwegen (raakt besluit 0007).

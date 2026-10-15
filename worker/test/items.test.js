@@ -1,109 +1,121 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { itemDetail, listItems } from "../src/items.js";
+import { createSession } from "../src/auth.js";
+import worker, { runChecks } from "../src/index.js";
 
 const NOW = "2026-10-09T10:00:00Z";
-const U1 = { id: 1 };
-const U2 = { id: 2 };
+const ld = (name, price, gtin) =>
+  `<html><head><title>${name} | Winkel</title></head><body><script type="application/ld+json">${JSON.stringify({
+    "@type": "Product",
+    name,
+    gtin13: gtin,
+    image: "https://img.example/x.jpg",
+    offers: { "@type": "Offer", price, priceCurrency: "EUR", availability: "InStock" },
+  })}</script></body></html>`;
 
+const CB = "https://www.coolblue.nl/product/1/switch-2.html";
+const MM = "https://www.mediamarkt.nl/nl/product/_switch-2-123.html";
+const EAN = "4548736173293";
+
+function shops(pages) {
+  return async (url) => {
+    const u = String(url);
+    if (u.endsWith("/robots.txt")) return new Response("", { status: 200 });
+    const p = pages[u];
+    return p ? new Response(p, { headers: { "content-type": "text/html" } }) : new Response("weg", { status: 404 });
+  };
+}
+
+async function call(path, token, { body, method } = {}) {
+  const headers = { Origin: "https://prijs.prulwerk.nl", Authorization: `Bearer ${token}` };
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await worker.fetch(new Request(`https://api.test${path}`, { method: method ?? (body ? "POST" : "GET"), headers, body: body ? JSON.stringify(body) : undefined }), env);
+  return { status: res.status, body: await res.json() };
+}
+
+let mathijs;
+let sanne;
 beforeEach(async () => {
-  for (const t of ["watches", "price_points", "price_daily", "offers", "products", "users"]) {
+  for (const t of ["watches", "sessions", "passkeys", "invites", "users", "price_points", "price_daily", "robots", "offers", "products"]) {
     await env.DB.prepare(`DELETE FROM ${t}`).run();
   }
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO users (id, name, webauthn_id, is_admin, created_at) VALUES (1, 'mathijs', 'w1', 1, ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO users (id, name, webauthn_id, is_admin, created_at) VALUES (2, 'sanne', 'w2', 0, ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO products (id, name, created_at) VALUES (1, 'Product een', ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO products (id, name, created_at) VALUES (2, 'Product twee', ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO offers (id, product_id, shop, url, created_at) VALUES (1, 1, 'coolblue', 'https://www.coolblue.nl/a', ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO offers (id, product_id, shop, url, created_at) VALUES (2, 1, 'amazon', 'https://www.amazon.nl/a', ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO offers (id, product_id, shop, url, created_at) VALUES (3, 2, 'bol', 'https://www.bol.com/a', ?1)").bind(NOW),
-    env.DB.prepare("INSERT INTO watches (user_id, product_id, created_at) VALUES (1, 1, ?1), (1, 2, ?1), (2, 2, ?1)").bind(NOW),
+    env.DB.prepare("INSERT INTO users (id, name, webauthn_id, is_admin, created_at) VALUES (1, 'Mathijs', 'w1', 1, ?1)").bind(NOW),
+    env.DB.prepare("INSERT INTO users (id, name, webauthn_id, is_admin, created_at) VALUES (2, 'Sanne', 'w2', 0, ?1)").bind(NOW),
   ]);
+  mathijs = await createSession(env.DB, 1, "test", NOW);
+  sanne = await createSession(env.DB, 2, "test", NOW);
 });
 
-const point = (offer, at, status, price = null, inStock = null) =>
-  env.DB.prepare("INSERT INTO price_points (offer_id, checked_at, status, price_cents, in_stock) VALUES (?1, ?2, ?3, ?4, ?5)").bind(offer, at, status, price, inStock).run();
-const daily = (offer, day, cents) =>
-  env.DB.prepare("INSERT INTO price_daily (offer_id, day, min_cents, max_cents, close_cents) VALUES (?1, ?2, ?3, ?3, ?3)").bind(offer, day, cents).run();
+// Elke cron-aanroep doet één aanbieding; draai er een paar.
+async function cron(pages, n = 3) {
+  for (let i = 0; i < n; i++) await runChecks(env, NOW, shops(pages));
+}
 
-describe("items", () => {
-  it("ieder ziet alleen zijn eigen lijst", async () => {
-    expect((await listItems(env, U1, NOW)).items).toHaveLength(2);
-    expect((await listItems(env, U2, NOW)).items).toHaveLength(1);
-    await expect(itemDetail(env, U2, 1, NOW)).rejects.toMatchObject({ status: 404 });
+describe("link plakken", () => {
+  it("nieuw item: tijdelijke naam, na de eerste check de echte naam en prijs", async () => {
+    const added = await call("/api/items", mathijs, { body: { url: `bekijk dit: ${CB}?utm_source=app` } });
+    expect(added.status).toBe(200);
+    let list = (await call("/api/items", mathijs)).body;
+    expect(list.items[0]).toMatchObject({ name: "nieuw item bij coolblue", price: null, pending: true });
+
+    await cron({ [CB]: ld("Nintendo Switch 2", 469, EAN) }, 1);
+    list = (await call("/api/items", mathijs)).body;
+    expect(list.items[0]).toMatchObject({ name: "Nintendo Switch 2", price: 46900, shop: "coolblue", pending: false });
+    const p = await env.DB.prepare("SELECT ean, image_url, named FROM products").first();
+    expect(p).toEqual({ ean: EAN, image_url: "https://img.example/x.jpg", named: 1 });
   });
 
-  it("een mislukte laatste check geeft geen prijs, wel de oude prijs als terugval", async () => {
-    await point(1, "2026-10-09T08:00:00Z", "ok", 35900, 1);
-    await point(1, "2026-10-09T10:00:00Z", "fout");
-    const d = await itemDetail(env, U1, 1, NOW);
-    expect(d.price).toBeNull();
-    expect(d.offers.find((o) => o.shop === "coolblue")).toMatchObject({ price: null, last_ok_price: 35900, status: "fout" });
+  it("dezelfde link bij een vriend: hetzelfde item, met de geschiedenis die er al is", async () => {
+    const a = await call("/api/items", mathijs, { body: { url: CB } });
+    const b = await call("/api/items", sanne, { body: { url: CB } });
+    expect(b.body).toEqual({ id: a.body.id, existing: true });
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM offers").first()).n).toBe(1);
   });
 
-  it("winkels gesorteerd op prijs, zonder prijs achteraan", async () => {
-    await point(1, "2026-10-09T08:00:00Z", "ok", 35900, 1);
-    await point(2, "2026-10-09T08:01:00Z", "ok", 30071, 1);
-    expect((await itemDetail(env, U1, 1, NOW)).offers.map((o) => o.shop)).toEqual(["amazon", "coolblue"]);
+  it("zelfde EAN bij een andere winkel: één item met twee winkels, beide mensen volgen het", async () => {
+    const a = await call("/api/items", mathijs, { body: { url: CB } });
+    await call("/api/items", sanne, { body: { url: MM } });
+    await cron({ [CB]: ld("Nintendo Switch 2", 469, EAN), [MM]: ld("Nintendo Switch 2 console", 459, EAN) }, 2);
 
-    await point(1, "2026-10-09T09:00:00Z", "geblokkeerd");
-    const d = await itemDetail(env, U1, 1, NOW);
-    expect(d.offers.map((o) => o.shop)).toEqual(["amazon", "coolblue"]);
-    expect(d.shop).toBe("amazon");
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM products").first()).n).toBe(1);
+    for (const token of [mathijs, sanne]) {
+      const list = (await call("/api/items", token)).body;
+      expect(list.items).toHaveLength(1);
+      expect(list.items[0]).toMatchObject({ id: a.body.id, shops: 2, price: 45900, shop: "mediamarkt" });
+    }
   });
 
-  it("zonder prijs sorteert de winkel achteraan", async () => {
-    await point(1, "2026-10-09T08:00:00Z", "geblokkeerd");
-    await point(2, "2026-10-09T08:01:00Z", "ok", 30071, 1);
-    const d = await itemDetail(env, U1, 1, NOW);
-    expect(d.offers.map((o) => o.shop)).toEqual(["amazon", "coolblue"]);
-    expect(d.shop).toBe("amazon");
+  it("winkel erbij plakken bij een item", async () => {
+    const a = await call("/api/items", mathijs, { body: { url: CB } });
+    expect((await call(`/api/items/${a.body.id}/winkels`, mathijs, { body: { url: MM } })).status).toBe(200);
+    expect((await call(`/api/items/${a.body.id}`, mathijs)).body.offers).toHaveLength(2);
+    // niet bij een item dat je niet volgt
+    expect((await call(`/api/items/${a.body.id}/winkels`, sanne, { body: { url: MM } })).status).toBe(404);
   });
 
-  it("uitverkocht is niet de kopprijs", async () => {
-    await point(2, "2026-10-09T08:00:00Z", "ok", 25000, 0);
-    await point(1, "2026-10-09T08:01:00Z", "ok", 35900, 1);
-    const d = await itemDetail(env, U1, 1, NOW);
-    expect(d).toMatchObject({ price: 35900, shop: "coolblue" });
-    expect(d.offers.find((o) => o.shop === "amazon")).toMatchObject({ price: 25000, in_stock: false });
+  it("niet meer volgen: ophalen stopt als niemand het volgt, de geschiedenis blijft", async () => {
+    const a = await call("/api/items", mathijs, { body: { url: CB } });
+    await cron({ [CB]: ld("Switch", 469, EAN) }, 1);
+    await call("/api/items", sanne, { body: { url: CB } });
+
+    await call(`/api/items/${a.body.id}`, mathijs, { method: "DELETE" });
+    expect((await env.DB.prepare("SELECT active FROM offers").first()).active).toBe(1);
+    await call(`/api/items/${a.body.id}`, sanne, { method: "DELETE" });
+    expect((await env.DB.prepare("SELECT active FROM offers").first()).active).toBe(0);
+    expect((await env.DB.prepare("SELECT count(*) AS n FROM price_points").first()).n).toBe(1);
+
+    await call("/api/items", mathijs, { body: { url: CB } });
+    expect((await env.DB.prepare("SELECT active, last_checked_at FROM offers").first())).toEqual({ active: 1, last_checked_at: null });
   });
 
-  it("weekverschil uit price_daily", async () => {
-    await point(1, "2026-10-09T08:00:00Z", "ok", 32900, 1);
-    await daily(1, "2026-10-02", 34900);
-    await daily(1, "2026-10-09", 32900);
-    const item = (await listItems(env, U1, NOW)).items.find((i) => i.id === 1);
-    expect(item.delta).toEqual({ cents: -2000, since: "2026-10-02" });
+  it("geen winkellink: duidelijke fout", async () => {
+    const r = await call("/api/items", mathijs, { body: { url: "kijk hier eens naar" } });
+    expect(r.status).toBe(400);
+    expect(r.body.fout).toContain("geen winkellink");
   });
 
-  it("weekverschil: alleen vandaag of alleen buiten het venster geeft null", async () => {
-    await point(1, "2026-10-09T08:00:00Z", "ok", 32900, 1);
-    await daily(1, "2026-10-09", 32900);
-    expect((await listItems(env, U1, NOW)).items.find((i) => i.id === 1).delta).toBeNull();
-    await daily(1, "2026-09-30", 30000);
-    expect((await listItems(env, U1, NOW)).items.find((i) => i.id === 1).delta).toBeNull();
-  });
-
-  it("stats over 90 dagen", async () => {
-    await daily(1, "2026-07-10", 30000); // 91 dagen terug: buiten het venster
-    await daily(1, "2026-07-12", 31000); // 89 dagen terug: erbinnen
-    await daily(1, "2026-10-09", 32000);
-    const d = await itemDetail(env, U1, 1, NOW);
-    expect(d.stats).toMatchObject({ days: 2, low: 31000, high: 32000 });
-  });
-
-  it("last_ok is de laatste geslaagde check, last_check de laatste poging", async () => {
-    await env.DB.prepare("UPDATE offers SET last_checked_at = '2026-10-09T10:00:00Z' WHERE id = 1").run();
-    await point(1, "2026-10-09T08:00:00Z", "ok", 35900, 1);
-    await point(1, "2026-10-09T10:00:00Z", "fout");
-    const r = await listItems(env, U1, NOW);
-    expect(r.last_ok).toBe("2026-10-09T08:00:00Z");
-    expect(r.last_check).toBe("2026-10-09T10:00:00Z");
-  });
-
-  it("zonder geslaagde check is last_ok null", async () => {
-    await point(1, "2026-10-09T10:00:00Z", "fout");
-    expect((await listItems(env, U1, NOW)).last_ok).toBeNull();
+  it("zonder inloggen kan niemand iets toevoegen", async () => {
+    expect((await call("/api/items", "x".repeat(43), { body: { url: CB } })).status).toBe(401);
   });
 });

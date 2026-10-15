@@ -1,4 +1,4 @@
-# 0009: uitverkocht of pre-order telt niet als prijs
+# 0010: uitverkocht of pre-order telt niet als prijs
 
 Datum: 2026-10-09 · Status: besloten
 Vraag: telt een prijs van een winkel die zegt dat het product uitverkocht of pre-order is mee als laagste prijs en als dagwaarde?

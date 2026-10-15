@@ -2,7 +2,7 @@
 //   npm run offer:add -- "Sony WH-1000XM6 zwart" https://www.coolblue.nl/product/... https://www.amazon.nl/dp/...
 //   npm run offer:add -- --local "..." <url>        (tegen de lokale database van wrangler dev)
 import { execFileSync } from "node:child_process";
-import { normalizeOfferUrl, shopFromUrl } from "../src/shops.js";
+import { normalizeProductUrl, shopFromUrl } from "../src/shops.js";
 
 const args = process.argv.slice(2);
 const local = args[0] === "--local";
@@ -13,11 +13,10 @@ if (!name || !rawUrls.length) {
   process.exit(1);
 }
 
-let urls;
-try {
-  urls = rawUrls.map(normalizeOfferUrl);
-} catch (err) {
-  console.error(err.message);
+const urls = rawUrls.map(normalizeProductUrl);
+const bad = rawUrls.filter((_, i) => !urls[i]);
+if (bad.length) {
+  console.error("geen bruikbare winkellink: " + bad.join(", "));
   process.exit(1);
 }
 
